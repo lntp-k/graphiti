@@ -28,6 +28,12 @@
 
 ## 검증 안 됨 / 다음 세션 과제
 
+- **⚠️ Cross-encoder reranker가 로컬 vLLM에서 깨진다(잠복, 검토 발견 2026-09-15).**
+  `llm.provider: openai`라서 `CrossEncoderFactory`가 `OpenAIRerankerClient`를 고르고
+  BGE 폴백까지 가지 않는데, 이 클라이언트의 기본 모델(`gpt-4.1-nano`)을 vLLM이 모른다
+  (실측: `404 The model 'gpt-4.1-nano' does not exist`). 지금까지 쓴 검색 경로는
+  cross-encoder를 안 불러서 겉으론 멀쩡하지만, reranking을 쓰는 검색으로 넘어가면 즉시 에러.
+  해결 전엔 cross-encoder 필요한 기능을 쓰지 말 것. 상세: ADR 0001 §3.
 - **실제 episode 추가 → 시간성 검증**(구 사실 invalid_at 자동 처리)은 이번 세션에서
   재현하지 않았다. 이전 `mcp-live-test` 그래프로 했던 검증을 다시 해봐야 신뢰 가능.
 - **Dropbox 연동**은 설계만 논의됐고 코드는 없음. dropbox-map(`~/coding/dropbox-map/dropbox.db`,

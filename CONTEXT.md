@@ -13,9 +13,10 @@
 
 ## origin / 저장소 관계
 
-- 이 로컬 클론의 origin은 `https://github.com/getzep/graphiti`(upstream 그 자체, fork 아님).
+- `origin` = `https://github.com/lntp-k/graphiti.git` (내 fork, push 가능).
+- `upstream` = `https://github.com/getzep/graphiti` (원본, **push DISABLED**로 등록 — pull-only).
 - 로컬 커스터마이징(`mcp_server/config/`, `mcp_server/run-mcp.sh`, `decisions/`, 이 파일)은
-  **fork(`lntp-k/graphiti`)에만 push**하고 upstream에는 push하지 않는다
+  `origin`(fork)에만 push한다. upstream에는 절대 push하지 않는다
   ([[feedback_git_fork_workflow]]).
 
 ## 스택 (2026-09-15 재구성)

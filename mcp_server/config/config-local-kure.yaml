@@ -1,0 +1,45 @@
+# 로컬 스택 설정: LLM=로컬 vLLM(8012, Qwen3.8-27B-NVFP4), embedder=KURE-v1(로컬 8002, graphiti-eval), DB=FalkorDB(로컬, 볼륨 영속)
+server:
+  transport: "stdio"
+
+llm:
+  provider: "openai"
+  model: ${VLLM_MODEL:qwen3.8-27b-nvfp4-a767244d}
+  max_tokens: 4096
+  structured_output_mode: "json_object"  # vLLM은 json_schema 강제를 신뢰성 있게 지원 안 함
+  providers:
+    openai:
+      api_key: ${VLLM_API_KEY}
+      api_url: ${VLLM_API_URL:http://127.0.0.1:8012/v1}
+
+embedder:
+  provider: "openai"
+  model: "KURE-v1"
+  dimensions: 1024
+  providers:
+    openai:
+      api_key: "sk-local-kure"   # KURE 서버는 인증 무시, 형식만 맞춤
+      api_url: "http://127.0.0.1:8002/v1"
+
+database:
+  provider: "falkordb"
+  providers:
+    falkordb:
+      uri: "redis://localhost:6379"
+      password: ${FALKORDB_PASSWORD}
+      database: "default_db"
+
+graphiti:
+  group_id: "legal-eval"
+  user_id: "mcp_user"
+  entity_types:
+    - name: "Person"
+      description: "개인(의뢰인, 변호사, 판사 등)"
+    - name: "Organization"
+      description: "법무법인, 법원, 기관, 회사"
+    - name: "Event"
+      description: "기일, 계약 체결/해지, 선고 등 시점 활동"
+    - name: "Document"
+      description: "준비서면, 판결문, 계약서 등 문서"
+    - name: "Location"
+      description: "관할 법원, 물리적/가상 장소"

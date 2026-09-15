@@ -6,6 +6,7 @@ services:
     environment:
       - REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD:-} --appendonly yes --appendfsync everysec
       - BROWSER=0
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-} # healthcheck only; auth itself comes from REDIS_ARGS --requirepass
     volumes:
       - falkordb_data:/var/lib/falkordb/data
     healthcheck:
@@ -44,6 +45,7 @@ services:
       - "127.0.0.1:8000:8000" # HTTP transport — localhost only, 인증 없는 엔드포인트라 외부 노출 금지
     command: ["uv", "run", "main.py"]
 
+# NOTE: this compose-managed volume is NOT the same volume as mcp_server/docker/run-falkordb.sh uses (graphiti_falkordb_data) — running both means two separate datasets.
 volumes:
   falkordb_data:
     driver: local

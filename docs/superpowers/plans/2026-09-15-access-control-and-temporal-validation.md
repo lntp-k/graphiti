@@ -4,7 +4,7 @@
 
 **Goal:** graphiti-legal(FalkorDB 기반) 그래프에 실제 의뢰인 사건 데이터를 넣기 전에, (1) 컨테이너 네트워크 노출을 없애면서 재생성 과정에서 인증/영속성을 잃지 않도록 하고, 사건별 group_id 분리를 사람 규칙+최소한의 코드 가드로 강제하며, (2) bi-temporal 무효화(invalid_at) 동작을 대기·판정 기준이 명확한 방식으로 실측 재현한다.
 
-**Architecture:** 운영 설정(포트 바인딩, `REDIS_ARGS`) 변경 + 문서(CONTEXT.md/HANDOFF.md/ADR) + `graphiti_mcp_server.py`에 대한 **5줄 이내의 로컬 패치 1건**(group_id 누락 시 명시적 에러 반환 — 이 저장소엔 이미 reranker 패치 전례가 있어 원칙에 어긋나지 않는다). 시간성 검증은 별도 테스트 group_id로 폴링 기반 대기를 넣어 graphiti-legal MCP 도구를 실제 호출해 결과를 기록한다.
+**Architecture:** 운영 설정(포트 바인딩, `REDIS_ARGS`) 변경 + 문서(CONTEXT.md/HANDOFF.md/ADR) + `graphiti_mcp_server.py`에 대한 **5줄 이내의 로컬 패치 1건**(group_id 누락 시 경고 로그 남김 — 이 저장소엔 이미 reranker 패치 전례가 있어 원칙에 어긋나지 않는다). 시간성 검증은 별도 테스트 group_id로 폴링 기반 대기를 넣어 graphiti-legal MCP 도구를 실제 호출해 결과를 기록한다.
 
 **Tech Stack:** Docker/FalkorDB, redis-cli(컨테이너 내부), graphiti-legal MCP tools(add_memory / search_memory_facts / search_nodes / get_episodes / get_episode_entities / clear_graph / get_status), bash, git.
 

@@ -6,11 +6,17 @@ set -euo pipefail
 IMAGE="falkordb/falkordb@sha256:0d793d4b249a9cf0837faa9f30fea1b86fb50086fc8aa21e9447078a07f995bc"
 FALKORDB_PASSWORD="$(grep -m1 '^FALKORDB_PASSWORD=' "$HOME/.hermes/.env" | cut -d= -f2- | tr -d '\r"'"'"'')"
 [ -n "$FALKORDB_PASSWORD" ] || { echo "FALKORDB_PASSWORD 추출 실패" >&2; exit 1; }
+ENV_FILE="$(mktemp)"
+trap 'rm -f "$ENV_FILE"' EXIT
+{
+  echo "REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD} --appendonly yes --appendfsync everysec"
+  echo "BROWSER=0"
+} > "$ENV_FILE"
+chmod 600 "$ENV_FILE"
 docker rm -f graphiti-falkordb 2>/dev/null || true
 docker run -d --name graphiti-falkordb \
   -p 127.0.0.1:6379:6379 \
-  -e REDIS_ARGS="--requirepass ${FALKORDB_PASSWORD} --appendonly yes --appendfsync everysec" \
-  -e BROWSER=0 \
+  --env-file "$ENV_FILE" \
   -v graphiti_falkordb_data:/var/lib/falkordb/data \
   --restart unless-stopped \
   "$IMAGE"

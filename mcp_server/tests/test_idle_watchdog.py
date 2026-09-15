@@ -193,9 +193,7 @@ async def test_wrap_with_activity_tracking_keeps_watchdog_from_firing_during_a_s
 
     await call_started.wait()
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(
-            _pump_clock_while(clock, watchdog_task.done, step=2.0), timeout=0.1
-        )
+        await asyncio.wait_for(_pump_clock_while(clock, watchdog_task.done, step=2.0), timeout=0.1)
     assert not watchdog_task.done()
 
     finish_call.set()

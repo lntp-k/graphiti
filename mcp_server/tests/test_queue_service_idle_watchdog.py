@@ -8,9 +8,9 @@ to the graph (see the fable/opus review of commit cbe8fd1).
 """
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 from services.queue_service import QueueService
 from utils.idle_watchdog import IdleTimeoutWatchdog
@@ -55,9 +55,7 @@ async def test_queue_worker_keeps_watchdog_from_firing_while_processing():
 
     watchdog_task = asyncio.create_task(watchdog.run())
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(
-            _pump_clock_while(clock, watchdog_task.done), timeout=0.1
-        )
+        await asyncio.wait_for(_pump_clock_while(clock, watchdog_task.done), timeout=0.1)
     assert not watchdog_task.done()
 
     finish.set()

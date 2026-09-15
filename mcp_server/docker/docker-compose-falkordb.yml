@@ -2,15 +2,14 @@ services:
   falkordb:
     image: falkordb/falkordb:latest
     ports:
-      - "6379:6379" # Redis/FalkorDB port
-      - "3000:3000" # FalkorDB web UI
+      - "127.0.0.1:6379:6379" # Redis/FalkorDB port — localhost only
     environment:
-      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
-      - BROWSER=${BROWSER:-1}  # Enable FalkorDB Browser UI (set to 0 to disable)
+      - REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD:-} --appendonly yes --appendfsync everysec
+      - BROWSER=0
     volumes:
       - falkordb_data:/var/lib/falkordb/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      test: ["CMD", "sh", "-c", "REDISCLI_AUTH=$$FALKORDB_PASSWORD redis-cli -p 6379 ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,7 +41,7 @@ services:
     volumes:
       - ../config/config-docker-falkordb.yaml:/app/mcp/config/config.yaml:ro
     ports:
-      - "8000:8000" # Expose the MCP server via HTTP transport
+      - "127.0.0.1:8000:8000" # HTTP transport — localhost only, 인증 없는 엔드포인트라 외부 노출 금지
     command: ["uv", "run", "main.py"]
 
 volumes:

@@ -30,7 +30,7 @@ database:
       database: "default_db"
 
 graphiti:
-  group_id: "legal-eval"
+  group_id: "_unassigned"  # 빈 문자열 금지 — add_memory/search 경로가 빈 값에 서로 다르게(둘 다 위험하게) 반응함(실측, ADR 0002)
   user_id: "mcp_user"
   entity_types:
     - name: "Person"

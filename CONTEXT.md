@@ -27,6 +27,15 @@
   `~/.hermes/.env`의 `FALKORDB_PASSWORD` 공유).
 - MCP 등록명 `graphiti-legal` (user scope, `~/.claude.json`), stdio transport.
 
+## 사건별 데이터 분리 (group_id)
+
+`add_memory`/`search_nodes`/`search_memory_facts` 호출마다 `group_id`(또는 `group_ids`)를
+**반드시** 사건 식별자로 명시한다. 생략하면:
+- 쓰기(`add_memory`): 기본값 `_unassigned` 그룹으로 조용히 들어간다.
+- 읽기(`search_*`): 기본값이 있으면 그 그룹으로, 없으면(빈 문자열) 전역 검색이 된다.
+group_id는 **ASCII 영숫자·`-`·`_`만 허용**(한글/공백 불가, `graphiti_core/helpers.py:validate_group_id`
+실측 확인). 사건번호는 로마자로 옮겨 쓴다 — 예: `2026고합123` → `2026-gohap-123`.
+
 ## 실데이터 취급
 
 지금 FalkorDB는 완전히 빈 상태(2026-09-15 재구성 직후)다. **의뢰인 실데이터를 넣기 전에

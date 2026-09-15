@@ -33,8 +33,55 @@
   `model=config.model`을 추가해 reranker가 `gpt-4.1-nano` 대신 이미 설정된 LLM 모델
   (`qwen3.8-27b-nvfp4-a767244d`)을 쓰도록 고침. 실측: vLLM이 해당 모델로 200 응답.
   상세: ADR 0001 §3. (MCP 도구를 통한 end-to-end 재랭킹 호출까지는 재현 안 함 — 다음 과제로 유지)
-- **실제 episode 추가 → 시간성 검증**(구 사실 invalid_at 자동 처리)은 이번 세션에서
-  재현하지 않았다. 이전 `mcp-live-test` 그래프로 했던 검증을 다시 해봐야 신뢰 가능.
+- ~~**실제 episode 추가 → 시간성 검증**(구 사실 invalid_at 자동 처리)은 이번 세션에서
+  재현하지 않았다.~~ → **2026-09-15 재검증 시도, 부분 성공/부분 미확인으로 종료.**
+  격리 그룹 `temporal-verify-20260915`(+ 검증용 보조 그룹
+  `temporal-verify-20260915-probe`)로 실측, 종료 후 둘 다 `clear_graph`로 정리 완료.
+  절차와 근거는 `.superpowers/sdd/2026-09-15-access-control-and-temporal-validation/task-2-report.md` 참고.
+
+  **확인된 것 (Step 1~4, 7):**
+  - `get_status()` → 항상 `{"status":"ok", ...connected to falkordb database"}` — 브리핑대로
+    DB ping만 하고 큐 처리 상태는 반영 안 함(실측 재확인).
+  - 첫 episode(`temporal-test-1`, "2026년 1월 1일 현재, 김철수는 리앤플리그 법무법인
+    소속이다.") 주입 → 약 100초 후 `get_episodes`에 나타남(브리핑의 60초 타임아웃보다
+    김, 과거 로그에선 최대 249초까지 걸린 사례 확인 — 60초는 너무 짧은 기본값).
+  - `search_memory_facts(query="김철수 소속", ...)` → fact 1건, `valid_at`:
+    `"2026-01-01T00:00:00Z"`(본문 명시 날짜에서 정확히 추출됨), `invalid_at`: `null`.
+    엣지 uuid `2a859154-57c5-469d-a0d2-0a1d879b117c`.
+  - `get_episode_entities`로 노드(김철수, 리앤플리그 법무법인) 및 엣지 uuid 캡처 완료 —
+    본문에 날짜를 명시하면 valid_at이 null로 남지 않는다는 브리핑의 전제는 **이 절반만
+    확인됨**(사실 확인: 확인됨).
+  - group_id 격리 음성 대조: `search_memory_facts(..., group_ids="_unassigned")` → 0건.
+    Task 1의 group_id 분리 주장을 실측으로 뒷받침.
+
+  **끝내 확인 못 한 것 (Step 5/6/8 — invalid_at 자동 무효화 자체):**
+  - 모순 fact(`temporal-test-2`, "김철수는 2026년 6월 1일부로... 퇴사했다") 주입 후
+    `get_episodes`/`search_memory_facts`를 **6분 이상(360초+)** 폴링했으나 끝내 처리
+    완료를 못 봤다 — `invalid_at` == 새 엣지 `valid_at` 판정 자체를 못 함(FAIL/판정불가).
+  - 같은 group_id에 뒤이어 넣은 세 번째 episode(`temporal-test-3`, 사무실 소재지 이전)도
+    큐가 순차 처리라는 문서대로 뒤에서 막혀 끝내 처리 안 됨.
+  - 완전히 새 group_id(`temporal-verify-20260915-probe`)에 넣은 별개 episode도 4분+
+    폴링에도 처리 안 됨 — 특정 모순 내용의 문제가 아니라 **이 세션의 파이프라인 자체가
+    첫 episode 이후 멈춘 것**으로 보임.
+  - 원인 후보를 좁히려 vLLM(`curl .../v1/chat/completions`)을 직접 호출 → 0.78초 응답
+    (LLM 자체는 정상), FalkorDB 컨테이너는 재시작 없이 계속 기동 중(`StartedAt` 확인) +
+    `PING`→`PONG` 정상 — **인프라(vLLM/FalkorDB)는 정상, `graphiti-legal` 서버 내부
+    큐/파이프라인이 두 번째 episode부터 멎은 것으로 보임**(코드 근거 미확인, 이 세션의
+    stderr가 파일이 아니라 소켓으로 나가서 스택트레이스를 못 봄 — 아래 항목 참고).
+  - **로그 위치 재확인 결과**: 이 세션이 직접 띄운 `graphiti-legal` 프로세스(watchdog 안
+    거침)는 stdout/stderr가 파일이 아니라 소켓(`/proc/<pid>/fd/2` → `socket:[...]`)으로
+    나간다 — `/home/jl/.hermes/logs/mcp-stderr.log`는 Hermes Agent webui가 watchdog로
+    띄운 **별개 인스턴스**들의 로그였다(같은 서버 스크립트, 다른 프로세스). 그 로그에는
+    이번 세션의 도구 호출(`CallToolRequest`)이 단 한 줄도 없었다 — 서로 다른 프로세스라
+    당연한 결과이지만, "MCP stderr 로그 확인"이 이 세션 자체의 디버깅에는 안 통한다는
+    것을 이번에 실측으로 확인함(다음에 같은 문제 디버깅 시 다른 방법 필요).
+
+  **결론: 시간성(invalid_at) 자동 무효화는 이번 세션에서 "검증됨"으로 옮길 수 없다.**
+  valid_at 추출과 group_id 격리는 확인됐지만, 모순 감지·invalid_at 채움 자체는 파이프라인이
+  멈춰 재현/판정 불가였다. 재검증 시 이 세션 프로세스의 stdout/stderr를 처음부터 파일로
+  리다이렉트해 두거나(예: `run-mcp.sh`를 임시로 `2> /tmp/graphiti-debug.log`로 감싸서 실행),
+  동시 실행 중인 다른 worktree 세션의 graphiti-legal 프로세스를 먼저 정리한 뒤 단독으로
+  재시도할 것.
 - **Dropbox 연동**은 설계만 논의됐고 코드는 없음. dropbox-map(`~/coding/dropbox-map/dropbox.db`,
   SQLite)의 사건별 문서를 episode로 넣는 파이프라인이 필요.
 - ~~**의뢰인 실데이터 투입 전 접근 통제** 미검토~~ → **2026-09-15 완료.** 계획:

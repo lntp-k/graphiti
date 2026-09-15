@@ -1,6 +1,10 @@
 # 로컬 스택 설정: LLM=로컬 vLLM(8012, Qwen3.8-27B-NVFP4), embedder=KURE-v1(로컬 8002, graphiti-eval), DB=FalkorDB(로컬, 볼륨 영속)
 server:
   transport: "stdio"
+  # 2026-09-15 mnsdb-weekly OOM 사고 재발방지: 클라이언트(Claude Code/Hermes)가
+  # 세션 종료 시 이 stdio 프로세스를 정리 못 하는 경로가 있어, 도구 호출 없이
+  # 10분 지나면 자진 종료한다. 다시 필요해지면 클라이언트가 재기동한다.
+  idle_timeout_seconds: 600
 
 llm:
   provider: "openai"

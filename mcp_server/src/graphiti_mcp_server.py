@@ -5,6 +5,7 @@ Graphiti MCP Server - Exposes Graphiti functionality through the Model Context P
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -45,6 +46,7 @@ from services.factories import (
 )
 from services.queue_service import QueueService
 from utils.formatting import format_fact_result, to_edge_result, to_node_result
+from utils.idle_watchdog import IdleTimeoutWatchdog, wrap_with_activity_tracking
 from utils.type_config import (
     build_edge_type_map,
     build_edge_types,
@@ -181,6 +183,7 @@ mcp = FastMCP(
 # Global services
 graphiti_service: Optional['GraphitiService'] = None
 queue_service: QueueService | None = None
+idle_watchdog: IdleTimeoutWatchdog | None = None
 
 # Global client for backward compatibility
 graphiti_client: Graphiti | None = None
@@ -1139,6 +1142,15 @@ async def initialize_server() -> ServerConfig:
         type=int,
         help='Port to bind the MCP server to',
     )
+    parser.add_argument(
+        '--idle-timeout-seconds',
+        type=float,
+        help=(
+            'stdio transport only: exit after this many seconds with no MCP tool '
+            'activity, so a leaked stdio session frees its memory instead of '
+            'accumulating (default: disabled)'
+        ),
+    )
 
     # Provider selection arguments
     parser.add_argument(
@@ -1248,6 +1260,20 @@ async def initialize_server() -> ServerConfig:
     if config.server.port:
         mcp.settings.port = config.server.port
 
+    # Idle-timeout watchdog (stdio only -- see utils/idle_watchdog.py). Wrapping
+    # the tool manager's call_tool is the one dispatch point every tool call
+    # goes through regardless of which of the @mcp.tool() functions was invoked.
+    global idle_watchdog
+    if config.server.transport == 'stdio' and config.server.idle_timeout_seconds:
+        idle_watchdog = IdleTimeoutWatchdog(config.server.idle_timeout_seconds)
+        mcp._tool_manager.call_tool = wrap_with_activity_tracking(
+            mcp._tool_manager.call_tool, idle_watchdog
+        )
+        logger.info(
+            f'Idle timeout enabled: exiting after {config.server.idle_timeout_seconds:.0f}s '
+            'with no MCP tool activity'
+        )
+
     # Return MCP configuration for transport
     return config.server
 
@@ -1260,7 +1286,24 @@ async def run_mcp_server():
     # Run the server with configured transport
     logger.info(f'Starting MCP server with transport: {mcp_config.transport}')
     if mcp_config.transport == 'stdio':
-        await mcp.run_stdio_async()
+        if idle_watchdog is not None:
+            serve_task = asyncio.create_task(mcp.run_stdio_async())
+            watchdog_task = asyncio.create_task(idle_watchdog.run())
+            done, pending = await asyncio.wait(
+                {serve_task, watchdog_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+            for task in pending:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            if watchdog_task in done:
+                return
+            # serve_task finished first (client closed stdin, or errored) --
+            # surface whatever it did.
+            await serve_task
+        else:
+            await mcp.run_stdio_async()
     elif mcp_config.transport == 'sse':
         logger.info(
             f'Running MCP server with SSE transport on {mcp.settings.host}:{mcp.settings.port}'

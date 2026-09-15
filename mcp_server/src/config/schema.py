@@ -82,6 +82,14 @@ class ServerConfig(BaseModel):
     )
     host: str = Field(default='0.0.0.0', description='Server host')
     port: int = Field(default=8000, description='Server port')
+    idle_timeout_seconds: float | None = Field(
+        default=None,
+        description=(
+            'stdio transport only: exit the process after this many seconds with no '
+            'MCP tool activity, so a leaked stdio session frees its memory instead of '
+            'accumulating. Disabled (None) by default.'
+        ),
+    )
 
 
 class OpenAIProviderConfig(BaseModel):
@@ -314,6 +322,8 @@ class GraphitiConfig(BaseSettings):
             self.server.host = args.host
         if hasattr(args, 'port') and args.port is not None:
             self.server.port = args.port
+        if hasattr(args, 'idle_timeout_seconds') and args.idle_timeout_seconds is not None:
+            self.server.idle_timeout_seconds = args.idle_timeout_seconds
 
         # Override LLM settings
         if hasattr(args, 'llm_provider') and args.llm_provider:

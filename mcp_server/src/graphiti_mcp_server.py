@@ -461,7 +461,7 @@ async def add_memory(
         if not effective_group_id:
             logger.warning(
                 f"add_memory called without any group_id (episode '{name}') — "
-                f"episode routed to an empty group_id. Pass group_id explicitly for real case data."
+                f'episode routed to an empty group_id. Pass group_id explicitly for real case data.'
             )
         elif effective_group_id == '_unassigned':
             logger.warning(

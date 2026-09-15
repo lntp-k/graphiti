@@ -3,7 +3,7 @@
 # REDIS_ARGS를 반드시 포함해야 인증(requirepass)과 AOF 영속성이 유지된다 —
 # FALKORDB_PASSWORD 환경변수 단독으로는 이미지가 인증을 걸지 않는다(2026-09-15 실측).
 set -euo pipefail
-IMAGE="falkordb/falkordb@sha256:REPLACE_WITH_DIGEST_FROM_STEP2"
+IMAGE="falkordb/falkordb@sha256:0d793d4b249a9cf0837faa9f30fea1b86fb50086fc8aa21e9447078a07f995bc"
 FALKORDB_PASSWORD="$(grep -m1 '^FALKORDB_PASSWORD=' "$HOME/.hermes/.env" | cut -d= -f2- | tr -d '\r"'"'"'')"
 [ -n "$FALKORDB_PASSWORD" ] || { echo "FALKORDB_PASSWORD 추출 실패" >&2; exit 1; }
 docker rm -f graphiti-falkordb 2>/dev/null || true

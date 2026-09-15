@@ -84,6 +84,7 @@ class ServerConfig(BaseModel):
     port: int = Field(default=8000, description='Server port')
     idle_timeout_seconds: float | None = Field(
         default=None,
+        gt=0,
         description=(
             'stdio transport only: exit the process after this many seconds with no '
             'MCP tool activity, so a leaked stdio session frees its memory instead of '

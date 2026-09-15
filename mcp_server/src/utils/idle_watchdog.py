@@ -17,10 +17,11 @@ the process on demand -- the same way it did the first time.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from typing import TypeVar
 
 logger = logging.getLogger(__name__)
@@ -44,13 +45,42 @@ class IdleTimeoutWatchdog:
         self._check_interval_seconds = check_interval_seconds
         self._clock = clock
         self._last_activity = clock()
+        self._active_calls = 0
 
     def touch(self) -> None:
         """Record MCP activity, resetting the idle clock."""
         self._last_activity = self._clock()
 
+    @property
+    def is_busy(self) -> bool:
+        """Whether a call is currently in flight under `track_activity()`."""
+        return self._active_calls > 0
+
     def seconds_idle(self) -> float:
+        """Seconds since the last activity, or 0 while a call is in flight.
+
+        A call that runs longer than `timeout_seconds` must not make the
+        server shut down out from under it -- `run()` only measures the gaps
+        *between* calls, not how long a single call takes.
+        """
+        if self.is_busy:
+            return 0.0
         return self._clock() - self._last_activity
+
+    @contextlib.contextmanager
+    def track_activity(self) -> Iterator[None]:
+        """Mark one unit of MCP work in flight for the duration of the `with` block.
+
+        Touches on both enter and exit so the idle clock starts counting from
+        when the call actually finished, not from when it started.
+        """
+        self.touch()
+        self._active_calls += 1
+        try:
+            yield
+        finally:
+            self._active_calls -= 1
+            self.touch()
 
     async def run(self) -> None:
         """Return once `timeout_seconds` pass without a `touch()` call.
@@ -74,16 +104,17 @@ class IdleTimeoutWatchdog:
 def wrap_with_activity_tracking(
     func: Callable[..., Awaitable[_R]], watchdog: IdleTimeoutWatchdog
 ) -> Callable[..., Awaitable[_R]]:
-    """Wrap an async callable so every invocation touches `watchdog` first.
+    """Wrap an async callable so every invocation counts as MCP activity.
 
-    Touches before calling through (not after) so a call that hangs or
-    raises still counts as activity -- the watchdog measures "is something
-    talking to this server", not "did the last call succeed".
+    Marks the call in flight via `track_activity()` for its whole duration
+    (not just on entry), so a call slower than `timeout_seconds` -- a large
+    `add_memory`, a heavy local-LLM `search_*` -- doesn't get shut down out
+    from under it, and hanging or raising still counts as activity.
     """
 
     @functools.wraps(func)
     async def _wrapped(*args, **kwargs) -> _R:
-        watchdog.touch()
-        return await func(*args, **kwargs)
+        with watchdog.track_activity():
+            return await func(*args, **kwargs)
 
     return _wrapped

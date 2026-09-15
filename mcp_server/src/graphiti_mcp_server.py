@@ -1269,6 +1269,10 @@ async def initialize_server() -> ServerConfig:
         mcp._tool_manager.call_tool = wrap_with_activity_tracking(
             mcp._tool_manager.call_tool, idle_watchdog
         )
+        # add_memory returns as soon as it's queued; the actual LLM
+        # extraction runs later in the queue worker, so that must count as
+        # activity too or a long-running ingest gets killed mid-write.
+        queue_service.set_idle_watchdog(idle_watchdog)
         logger.info(
             f'Idle timeout enabled: exiting after {config.server.idle_timeout_seconds:.0f}s '
             'with no MCP tool activity'
@@ -1297,11 +1301,15 @@ async def run_mcp_server():
             for task in pending:
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
-            if watchdog_task in done:
+            if serve_task in done:
+                # Client closed stdin, or the transport errored -- surface
+                # whatever it did. Checked first (not `watchdog_task in
+                # done`) so a serve_task exception is never left unretrieved
+                # when both finish in the same tick.
+                await serve_task
                 return
-            # serve_task finished first (client closed stdin, or errored) --
-            # surface whatever it did.
-            await serve_task
+            # Only the watchdog fired.
+            return
         else:
             await mcp.run_stdio_async()
     elif mcp_config.transport == 'sse':

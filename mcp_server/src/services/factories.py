@@ -467,10 +467,14 @@ class CrossEncoderFactory:
                 )
 
                 logger.info(f'Using OpenAIRerankerClient from {source} provider')
+                # Upstream's default (gpt-4.1-nano) 404s against local/non-OpenAI-compatible
+                # endpoints (e.g. vLLM). Reuse this provider's own configured model instead of
+                # letting OpenAIRerankerClient fall back to its OpenAI-specific default.
                 return OpenAIRerankerClient(
                     config=GraphitiLLMConfig(
                         api_key=config.providers.openai.api_key,
                         base_url=config.providers.openai.api_url,
+                        model=config.model,
                     )
                 )
 

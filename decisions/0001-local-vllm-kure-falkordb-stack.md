@@ -17,16 +17,22 @@ Accepted (2026-09-15)
    `~/coding/graphiti-eval/kure_server.py`가 OpenAI 호환 `/v1/embeddings`로 서빙(포트 8002).
    graphiti-core 자체는 sentence-transformers provider를 config 스키마로 노출하지 않아서
    이 shim이 여전히 필요하다(업스트림에 없는 이유를 확인함, `config/config.yaml` 실측).
-3. **Reranker**: 패치 없이 업스트림 그대로 사용. `CrossEncoderFactory`는 LLM→embedder
-   provider 순으로 reranker를 찾고 없으면 로컬 BGE로 폴백한다(`mcp_server/src/services/factories.py`
-   실측). 이 설정은 `llm.provider: openai`라서 **첫 순회에서 `OpenAIRerankerClient`가
-   선택되고 BGE 폴백까지 가지 않는다.** `OpenAIRerankerClient`는 model을 안 주면
-   `gpt-4.1-nano`를 기본값으로 호출하는데, 실측 결과 로컬 vLLM은 이 모델을 모른다
-   (`404 The model 'gpt-4.1-nano' does not exist`). 다만 MCP의 검색 경로(`NODE_HYBRID_SEARCH_RRF`,
-   `EDGE_HYBRID_SEARCH_RRF` 등)는 지금까지 cross-encoder를 호출하지 않아 **당장은 안 터진다** —
-   cross-encoder 재랭킹을 쓰는 검색 모드로 넘어가는 순간 터질 잠복 문제다(미해결, HANDOFF 참고).
-   `uv sync --extra providers`로 sentence-transformers는 설치해 뒀으니, 이 경로를 강제로
-   BGE 폴백시키려면 `llm`/`embedder`에서 reranker를 못 찾게 하거나 코드를 직접 손봐야 한다.
+3. **Reranker**: `CrossEncoderFactory`는 LLM→embedder provider 순으로 reranker를 찾고
+   없으면 로컬 BGE로 폴백한다(`mcp_server/src/services/factories.py` 실측). 이 설정은
+   `llm.provider: openai`라서 첫 순회에서 `OpenAIRerankerClient`가 선택되고 BGE 폴백까지
+   가지 않는다. **문제(2026-09-15 발견)**: `OpenAIRerankerClient`는 model을 안 주면
+   `gpt-4.1-nano`를 기본값으로 호출하는데, 로컬 vLLM은 이 모델을 모른다
+   (`404 The model 'gpt-4.1-nano' does not exist`, 실측). MCP의 검색 경로는 당시까지
+   cross-encoder를 호출하지 않아 겉으로는 안 터졌지만, 재랭킹을 쓰는 순간 터질 잠복
+   문제였다.
+   **패치(2026-09-15, `mcp_server/src/services/factories.py`)**: `_reranker_for_provider`의
+   openai 분기에서 `GraphitiLLMConfig(...)`에 `model=config.model`을 추가해, 이미
+   `config-local-kure.yaml`에 설정된 LLM 모델(`qwen3.8-27b-nvfp4-a767244d`)을 그대로
+   재사용하도록 했다. 별도의 reranker 전용 모델명을 새로 두지 않고 "이 provider가 이미
+   쓰기로 한 모델을 reranker에도 쓴다"는 원칙으로 고쳤다 — provider가 바뀌면(OpenRouter 등)
+   자동으로 그 모델을 따라간다. 실측: `curl .../v1/chat/completions -d model=qwen3.8-27b-nvfp4-a767244d`
+   가 200 정상 응답(패치 전 `gpt-4.1-nano`는 404). `uv sync --extra providers`로 sentence-transformers는
+   설치해 뒀으니 BGE 로컬 폴백도 필요시 쓸 수 있는 상태로 유지.
 4. **DB**: FalkorDB 도커, 비밀번호는 `~/.hermes/.env`의 `FALKORDB_PASSWORD`를 재사용(다른
    서비스와 공유), 볼륨 `graphiti_falkordb_data`로 영속화.
 

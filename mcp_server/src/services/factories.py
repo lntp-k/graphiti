@@ -468,13 +468,18 @@ class CrossEncoderFactory:
 
                 logger.info(f'Using OpenAIRerankerClient from {source} provider')
                 # Upstream's default (gpt-4.1-nano) 404s against local/non-OpenAI-compatible
-                # endpoints (e.g. vLLM). Reuse this provider's own configured model instead of
-                # letting OpenAIRerankerClient fall back to its OpenAI-specific default.
+                # chat endpoints (e.g. vLLM). Reuse the LLM's own configured chat model instead
+                # of letting OpenAIRerankerClient fall back to its OpenAI-specific default — but
+                # only when this branch is being evaluated for the LLM provider. When it's being
+                # evaluated for the *embedder* provider, config.model is an embedding model name
+                # (e.g. text-embedding-3-small), not a chat model, so passing it through would
+                # send an embedding model name to a chat-completions call.
+                reranker_model = config.model if isinstance(config, LLMConfig) else None
                 return OpenAIRerankerClient(
                     config=GraphitiLLMConfig(
                         api_key=config.providers.openai.api_key,
                         base_url=config.providers.openai.api_url,
-                        model=config.model,
+                        model=reranker_model,
                     )
                 )
 

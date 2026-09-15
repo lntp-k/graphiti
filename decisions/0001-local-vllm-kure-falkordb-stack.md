@@ -26,11 +26,18 @@ Accepted (2026-09-15)
    cross-encoder를 호출하지 않아 겉으로는 안 터졌지만, 재랭킹을 쓰는 순간 터질 잠복
    문제였다.
    **패치(2026-09-15, `mcp_server/src/services/factories.py`)**: `_reranker_for_provider`의
-   openai 분기에서 `GraphitiLLMConfig(...)`에 `model=config.model`을 추가해, 이미
-   `config-local-kure.yaml`에 설정된 LLM 모델(`qwen3.8-27b-nvfp4-a767244d`)을 그대로
-   재사용하도록 했다. 별도의 reranker 전용 모델명을 새로 두지 않고 "이 provider가 이미
-   쓰기로 한 모델을 reranker에도 쓴다"는 원칙으로 고쳤다 — provider가 바뀌면(OpenRouter 등)
-   자동으로 그 모델을 따라간다. 실측: `curl .../v1/chat/completions -d model=qwen3.8-27b-nvfp4-a767244d`
+   openai 분기에서, **LLM provider 분기로 평가될 때에 한해서만**
+   `GraphitiLLMConfig(...)`에 `model=config.model`을 넣어 이미 `config-local-kure.yaml`에
+   설정된 LLM 모델(`qwen3.8-27b-nvfp4-a767244d`)을 재사용하도록 했다.
+   **주의(2026-09-15 검토에서 발견한 함정)**: 같은 함수가 embedder provider 분기
+   (`('embedder', embedder_config)`)로도 호출되는데, `EmbedderConfig.model`은 임베딩
+   모델명(예: `text-embedding-3-small`)이라 그대로 넘기면 reranker의 chat-completions
+   호출에 임베딩 모델명이 들어가 버린다(진짜 OpenAI 상대로는 400) — 최초 패치가 이
+   구분 없이 `config.model`을 넘겨서 이 회귀를 만들었다가 검토에서 잡혀 `isinstance(config, LLMConfig)`
+   분기로 좁혔다. 그래서 "provider가 바뀌면 자동으로 그 모델을 따라간다"는 **LLM provider
+   분기에 한해서만** 맞는 말이고, embedder 분기는 여전히 업스트림 기본값(`gpt-4.1-nano`,
+   실제 OpenAI 상대로는 정상 동작)으로 폴백한다.
+   실측: `curl .../v1/chat/completions -d model=qwen3.8-27b-nvfp4-a767244d`
    가 200 정상 응답(패치 전 `gpt-4.1-nano`는 404). `uv sync --extra providers`로 sentence-transformers는
    설치해 뒀으니 BGE 로컬 폴백도 필요시 쓸 수 있는 상태로 유지.
 4. **DB**: FalkorDB 도커, 비밀번호는 `~/.hermes/.env`의 `FALKORDB_PASSWORD`를 재사용(다른

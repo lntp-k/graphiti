@@ -33,6 +33,11 @@
   회전은 별도 작업.
 - 이 조치는 FalkorDB/graphiti-mcp만 처리한다. 호스트 전체의 0.0.0.0 published
   port(Postgres 5432, 9100, 9500 등 실측됨)는 이 계획 범위 밖 — 별도 후속 점검 필요.
+- 이번 변경이 건드리지 않은 이 저장소의 다른 파일들 — 루트 `docker-compose.yml`,
+  `mcp_server/docker/README-falkordb-combined.md` — 은 여전히 `6379:6379`/`3000:3000`/
+  `8000:8000`을 모든 인터페이스에 공개한다. 누군가 강화된 `docker-compose-falkordb.yml`이나
+  `run-falkordb.sh` 대신 이 파일들로 기동하면 이번 조치가 무의미해진다 — 이 변경으로
+  고친 것이 아니라 향후 세션이 걸려 넘어질 수 있는 운영상 함정으로 기록해 둔다.
 
 ## 대안 기각
 - Tailscale ACL + `ufw enable`: 원격 접근이 애초에 불필요하므로 더 단순한 로컬 바인딩으로 충분.

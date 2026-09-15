@@ -461,7 +461,12 @@ async def add_memory(
     try:
         # Use the provided group_id or fall back to the default from config
         effective_group_id = group_id or config.graphiti.group_id
-        if not effective_group_id or effective_group_id == '_unassigned':
+        if not effective_group_id:
+            logger.warning(
+                f"add_memory called without any group_id (episode '{name}') — "
+                f'episode routed to an empty group_id. Pass group_id explicitly for real case data.'
+            )
+        elif effective_group_id == '_unassigned':
             logger.warning(
                 f"add_memory called without explicit group_id (episode '{name}') — "
                 f"routed to '_unassigned'. Pass group_id explicitly for real case data."

@@ -49,8 +49,10 @@
     `"2026-01-01T00:00:00Z"`(본문 명시 날짜에서 정확히 추출됨), `invalid_at`: `null`.
     엣지 uuid `2a859154-57c5-469d-a0d2-0a1d879b117c`.
   - `get_episode_entities`로 노드(김철수, 리앤플리그 법무법인) 및 엣지 uuid 캡처 완료 —
-    본문에 날짜를 명시하면 valid_at이 null로 남지 않는다는 브리핑의 전제는 **이 절반만
-    확인됨**(사실 확인: 확인됨).
+    본문에 날짜를 명시하면 valid_at이 정확히 추출된다는 브리핑의 전제는 **첫 episode에
+    한해 확인됨**. 다만 Task 2가 검증하려던 전체 bi-temporal round-trip(모순 주입 시
+    기존 fact가 invalid_at으로 무효화되는 것까지)은 아래에 적었듯 확인하지 못했으므로,
+    Task 2가 세우려던 목표 중 절반만 실제로 확인된 셈이다.
   - group_id 격리 음성 대조: `search_memory_facts(..., group_ids="_unassigned")` → 0건.
     Task 1의 group_id 분리 주장을 실측으로 뒷받침.
 
@@ -82,6 +84,11 @@
   리다이렉트해 두거나(예: `run-mcp.sh`를 임시로 `2> /tmp/graphiti-debug.log`로 감싸서 실행),
   동시 실행 중인 다른 worktree 세션의 graphiti-legal 프로세스를 먼저 정리한 뒤 단독으로
   재시도할 것.
+  계획(`docs/superpowers/plans/2026-09-15-access-control-and-temporal-validation.md`)의
+  Global Constraints에 명시된 "실데이터는 Task 1·Task 2가 모두 끝나고 검증이 통과하기
+  전까지 넣지 않는다" 제약은 **여전히 유효하다** — Task 1은 통과했지만 Task 2의 핵심
+  목표(Step 5/6/8, 실제 invalid_at 무효화)는 통과하지 못했으므로, 위 큐 정체 원인을
+  진단하고 무효화가 실제로 검증되기 전까지 의뢰인 실데이터 투입은 계속 막혀 있다.
 - **Dropbox 연동**은 설계만 논의됐고 코드는 없음. dropbox-map(`~/coding/dropbox-map/dropbox.db`,
   SQLite)의 사건별 문서를 episode로 넣는 파이프라인이 필요.
 - ~~**의뢰인 실데이터 투입 전 접근 통제** 미검토~~ → **2026-09-15 완료.** 계획:

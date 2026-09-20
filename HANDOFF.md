@@ -162,7 +162,8 @@ Facts below were measured on 2026-09-20 unless noted.
      `~/.local/bin`. The launcher worked from Claude Code only because the interactive PATH has it.
 - The fix is **host config, not in any repo**: `~/.config/systemd/user/graphiti-session-sync.service.d/` now holds
   `20-path.conf` (new; `Environment=PATH=/home/jl/.local/bin:/usr/local/bin:/usr/bin:/bin`) and
-  `10-local-llm.conf.retired-20260919` (renamed, so systemd ignores it; rename back to undo). See ADR 0003.
+  `10-local-llm.conf.retired-20260919` (renamed, so systemd ignores it; rename back to undo). The active
+  `50-dns-wait.conf` (pre-existing, DNS wait before start) is untouched. See ADR 0003.
 - Session backlog drains 25 files per run; `once --dry-run` reported `pending=9` at ~14:30 on 2026-09-20.
 
 **Not done / open**
@@ -170,8 +171,9 @@ Facts below were measured on 2026-09-20 unless noted.
   (Documents 9/16, Documents/89900 9/17, six short-lived `handoff-docs-review` worktree sessions 9/19). They run 0.30.1 from
   memory and pick up 0.30.2 only when the session re-connects (`/mcp`) or restarts. The 0.30.1 -> 0.30.2 gap is a patch
   release and nothing is known to be broken.
-- **Idle timeout looks ineffective** (not investigated): `config-local-kure.yaml` sets `idle_timeout_seconds: 600`, yet three
-  MCP processes had etime 1d–3d23h with only 19–61 CPU-seconds, and at least 14 graphiti MCP processes were alive in total. This is
+- **Idle timeout looks ineffective** (not investigated): `config-local-kure.yaml` sets `idle_timeout_seconds: 600`, yet eight
+  pre-bump MCP processes were older than a day (oldest etime 3d23h; the three sampled had only 19–61 CPU-seconds), and at
+  least 14 graphiti MCP processes were alive in total. This is
   exactly the trigger the 2026-09-15 note above set ("if the count reaches double digits again, re-investigate"). Whether
   those processes were truly idle or kept alive by their parent sessions was not checked.
 - `spark-infra` (`spark-update-manual`) now checks this stack: the MCP graphiti-core pin against PyPI and whether fork

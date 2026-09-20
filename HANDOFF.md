@@ -145,6 +145,57 @@ Claude Code/Hermes 세션이 쌓일수록 중복 프로세스가 누적돼 결�
   스스로 안 죽는 사례가 있는지는 아직 관찰되지 않았다 — 다음에 프로세스 수가
   다시 두 자릿수로 쌓이면 idle-timeout 자체가 안 먹히는 것으로 보고 재조사할 것.
 
+## 2026-09-20 update — session-sync repair, graphiti-core 0.30.2, stale MCP processes
+
+Facts below were measured on 2026-09-20 unless noted.
+
+**State**
+- `mcp_server/uv.lock` pins graphiti-core **0.30.2** (commit `57a7680`, 3-line diff: version, sdist, wheel — no other
+  package touched). The real venv reports 0.30.2. Verified first in a scratch copy (`uv sync`, import, `main.py --help`),
+  then by a live `graphiti-session-sync` run that started a fresh MCP process on the new lock.
+- `graphiti-session-sync.timer` (every 5 min) is healthy again since 2026-09-19 14:26 KST. Outage: last success
+  2026-09-15 08:34, first failure 08:39, about 1,200 failed runs until the fix. Two stacked causes:
+  1. The 2026-09-15 wipe deleted the untracked `run-mcp-local.sh`, but the unit drop-in `10-local-llm.conf` still pointed at
+     it (`FileNotFoundError`). The rebuilt `run-mcp.sh` is already the all-local launcher (local vLLM 8012 + KURE 8002 +
+     FalkorDB), so the drop-in was obsolete.
+  2. After that, `exec uv` inside `run-mcp.sh` failed under systemd (`uv: not found`): the user-unit default PATH has no
+     `~/.local/bin`. The launcher worked from Claude Code only because the interactive PATH has it.
+- The fix is **host config, not in any repo**: `~/.config/systemd/user/graphiti-session-sync.service.d/` now holds
+  `20-path.conf` (new; `Environment=PATH=/home/jl/.local/bin:/usr/local/bin:/usr/bin:/bin`) and
+  `10-local-llm.conf.retired-20260919` (renamed, so systemd ignores it; rename back to undo). See ADR 0003.
+- Session backlog drains 25 files per run; `once --dry-run` reported `pending=9` at ~14:30 on 2026-09-20.
+
+**Not done / open**
+- 8 live Claude Code sessions (parents alive, not orphans) still hold MCP processes started before the 0.30.2 bump
+  (Documents 9/16, Documents/89900 9/17, six short-lived `handoff-docs-review` worktree sessions 9/19). They run 0.30.1 from
+  memory and pick up 0.30.2 only when the session re-connects (`/mcp`) or restarts. The 0.30.1 -> 0.30.2 gap is a patch
+  release and nothing is known to be broken.
+- **Idle timeout looks ineffective** (not investigated): `config-local-kure.yaml` sets `idle_timeout_seconds: 600`, yet three
+  MCP processes had etime 1d–3d23h with only 19–61 CPU-seconds, and at least 14 graphiti MCP processes were alive in total. This is
+  exactly the trigger the 2026-09-15 note above set ("if the count reaches double digits again, re-investigate"). Whether
+  those processes were truly idle or kept alive by their parent sessions was not checked.
+- `spark-infra` (`spark-update-manual`) now checks this stack: the MCP graphiti-core pin against PyPI and whether fork
+  `main` contains the latest upstream release tag (spark-infra ADR 0056).
+
+**Postmortem (blameless, facts only)**
+- *Silent 4-day outage.* The launcher and its config were untracked, so the wipe removed them without trace, and the drop-in
+  that referenced them survived. The memory note describing the 08-24 design was never re-verified after the wipe. Whether
+  the failure alert fired for this unit was not checked.
+- *A fix that only removed the first error.* Retiring the stale drop-in exposed the second failure (`uv: not found`) on the
+  very next start. The 08-24 memory note had already recorded this exact PATH trap; the launcher rebuilt on 09-15 lost the
+  protection it had accidentally had before (a `PATH` entry in `~/.hermes/.env`). `claude mcp list` showing Connected on
+  09-15 proved the launcher works from an interactive shell, not from systemd. Re-run a rebuilt launcher under the
+  service's environment before calling it done.
+- *An overstated decision request.* The `pins.conf` mismatch was reported as "needs a decision about which side is
+  canonical"; a diff of the non-comment rows showed identical pins and only header comments differed. Diff the substance
+  before framing a difference as a decision. (Resolved by installing the repo copy on the host.)
+- *Search noise.* A case-insensitive search for `ngc` matched `IOSchedulingClass`. Use word boundaries.
+
+**JL 결정 필요**
+1. 옛 코드(0.30.1)를 쥔 세션 8개를 언제 재연결할지 — 급하지 않으면 자연 종료를 기다려도 됨.
+2. idle timeout 이 안 먹는 것으로 보이는 문제를 재조사할지(위 "Open").
+3. `run-mcp.sh` 자체를 PATH 비의존으로 고칠지 — 지금은 소비자 유닛 쪽에서 우회했으므로 다른 유닛이 이 런처를 부르면 같은 실패가 재현된다(ADR 0003).
+
 ## 되돌리는 법
 
 문제 생기면: `claude mcp remove graphiti-legal`, `systemctl --user disable --now kure-embed.service`,

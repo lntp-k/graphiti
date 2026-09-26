@@ -99,6 +99,10 @@ class OpenAIProviderConfig(BaseModel):
     api_key: str | None = None
     api_url: str = 'https://api.openai.com/v1'
     organization_id: str | None = None
+    # Merged into every chat.completions request body (openai SDK ``extra_body``).
+    # Only applied to the generic (non-OpenAI) client, e.g. vLLM's
+    # ``{'chat_template_kwargs': {'enable_thinking': False}}``.
+    extra_body: dict[str, Any] | None = None
 
 
 class AzureOpenAIProviderConfig(BaseModel):

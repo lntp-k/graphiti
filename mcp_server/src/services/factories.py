@@ -122,6 +122,29 @@ def reasoning_effort_for_model(model: str) -> str | None:
     return 'none' if model.startswith('gpt-5.5') else 'minimal'
 
 
+def _client_with_extra_body(api_key: str | None, base_url: str, extra_body: dict | None):
+    """AsyncOpenAI client whose chat completions always carry ``extra_body``.
+
+    Returns None when there is nothing to inject so OpenAIGenericClient builds its own
+    default client. graphiti-core's generic client has no hook for extra request fields
+    (e.g. vLLM ``chat_template_kwargs`` to turn a reasoning model's thinking off).
+    """
+    if not extra_body:
+        return None
+
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    create = client.chat.completions.create
+
+    async def create_with_extra_body(*args, **kwargs):
+        kwargs['extra_body'] = {**extra_body, **(kwargs.get('extra_body') or {})}
+        return await create(*args, **kwargs)
+
+    client.chat.completions.create = create_with_extra_body  # type: ignore[method-assign]
+    return client
+
+
 class LLMClientFactory:
     """Factory for creating LLM clients based on configuration."""
 
@@ -168,6 +191,11 @@ class LLMClientFactory:
                         config=llm_config,
                         max_tokens=config.max_tokens,
                         structured_output_mode=config.structured_output_mode,
+                        client=_client_with_extra_body(
+                            api_key,
+                            config.providers.openai.api_url,
+                            config.providers.openai.extra_body,
+                        ),
                     )
                 else:
                     # Use OpenAIClient for official OpenAI API (supports Responses API).

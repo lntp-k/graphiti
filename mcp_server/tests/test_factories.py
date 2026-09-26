@@ -84,6 +84,26 @@ class TestLLMClientFactoryRouting:
         assert isinstance(client, OpenAIGenericClient)
         assert client.structured_output_mode == 'json_schema'
 
+    def test_extra_body_is_sent_with_every_chat_completion(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        body = {'chat_template_kwargs': {'enable_thinking': False}}
+        config = self._config('http://localhost:8012/v1')
+        config.providers.openai.extra_body = body
+
+        with patch(
+            'openai.resources.chat.completions.AsyncCompletions.create', new_callable=AsyncMock
+        ) as base_create:
+            client = LLMClientFactory.create(config)
+            asyncio.run(client.client.chat.completions.create(model='m', messages=[]))
+
+        assert base_create.await_args.kwargs['extra_body'] == body
+
+    def test_no_extra_body_keeps_default_client(self):
+        client = LLMClientFactory.create(self._config('http://localhost:8012/v1'))
+        assert client.client.chat.completions.create.__name__ == 'create'
+
     def test_generic_client_uses_configured_structured_output_mode(self):
         config = self._config('http://localhost:11434/v1')
         config.structured_output_mode = 'json_object'

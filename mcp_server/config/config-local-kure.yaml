@@ -15,6 +15,11 @@ llm:
     openai:
       api_key: ${VLLM_API_KEY}
       api_url: ${VLLM_API_URL:http://127.0.0.1:8012/v1}
+      # Qwen3.8 thinks by default: ~3.5 min/episode measured 2026-09-26 (7s -> 2s per small call
+      # with thinking off). Per-request, so the shared vLLM (Hermes) is unaffected.
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
 
 embedder:
   provider: "openai"

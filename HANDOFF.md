@@ -147,6 +147,9 @@ Claude Code/Hermes 세션이 쌓일수록 중복 프로세스가 누적돼 결�
 
 ## 2026-09-20 update — session-sync repair, graphiti-core 0.30.2, stale MCP processes
 
+> **Correction 2026-09-26:** the "healthy again" / "drains 25 files per run" statements below are wrong. Every run
+> since 2026-06-22 was rejected by the MCP server; see the 2026-09-26 section at the end of this file.
+
 Facts below were measured on 2026-09-20 unless noted.
 
 **State**
@@ -203,3 +206,50 @@ Facts below were measured on 2026-09-20 unless noted.
 문제 생기면: `claude mcp remove graphiti-legal`, `systemctl --user disable --now kure-embed.service`,
 `docker rm -f graphiti-falkordb` (볼륨은 `docker volume rm graphiti_falkordb_data`로 별도 삭제해야
 지워짐 — 컨테이너만 지우면 데이터 남음).
+
+## 2026-09-26 update — end-to-end review, thinking off, json_schema (ADR 0004)
+
+Facts below were measured on 2026-09-26 unless noted.
+
+**State**
+- Temporal invalidation is now verified end to end: a contradicting episode sets `invalid_at` (= new event `valid_at`) and
+  `expired_at` on the old edge. Two-episode latency fell from 211 s to about 38 s. Evidence and rejected alternatives: ADR 0004.
+- Code: commits `859938a` (`extra_body` in schema/factory/test/config) and `351ee4b` (`json_schema`) on `main`. The running
+  `graphiti-mcp.service` was restarted after the second config edit (started 19:39:46 KST), so it runs this content.
+- `graphiti-session-sync` (repo `~/coding/graphiti-session-sync`, not modified today) has **never ingested anything**: all 5,767
+  rows in `~/.local/share/graphiti-session-sync/state.sqlite3` carry `isError` (`add_memory` requires `episode_body`; the sync
+  sends `body`), and it does not check `isError`, so it recorded them as ingested. FalkorDB has no `claude-code-sessions` graph.
+  Two further reasons a field-name fix alone would still lose data: the sync starts a stdio MCP child and terminates it within
+  5 s of `add_memory`, which only queues the episode; and the episode body is metadata only (sha256, sizes, counts).
+- FalkorDB graphs: `default_db` and `_unassigned` empty; `temporal-verify-20260915` (3 nodes) and `...-probe` (empty) are old
+  test leftovers. The shared MCP had 0 tool calls between 2026-09-24 and today's tests (nobody uses it yet).
+
+**Not done / open**
+- `get_episodes` returned 0 while the graph held the episodes (FalkorDB); not investigated. Poll the graph, not this tool.
+- The queue drops a failed episode after logging (no retry) although the caller was told "queued".
+- Entity types are Person/Organization/Event/Document/Location and no edge types; no legal-domain types yet.
+- `graphiti-mcp.service` exits 143 on a normal `systemctl restart`, which triggers `OnFailure=unit-failure-alert@`
+  (`SuccessExitStatus=143` missing). Not verified that a mail/reminder was actually produced.
+- Old open items from 2026-09-20 (0.30.1 sessions, idle timeout, PATH-independent launcher) are unchanged.
+- The untracked `.token-optimizer/` directory in this repo is a plugin artifact and was not committed.
+
+**Postmortem (blameless, facts only)**
+- *"Healthy" was read from exit codes.* The 2026-09-19/20 check counted `ingested` log lines and `exit 0`; those lines are printed
+  after any reply, including an error reply. A check of the result (rows in the graph) would have caught it.
+- *First fix attempt made things worse.* Turning thinking off alone (kept `json_object`) failed 4 of 4 episodes. Changing one
+  setting at a time and reading the graph after each change found the cause in one round.
+- *Wrong completion signal.* The first test polled `get_episodes`, which stays at 0, and waited 8 minutes for a condition that
+  could not trigger. Querying FalkorDB directly showed the state at once.
+- *Restart side effects.* A restart of the shared service ended 6 live client sessions and exit code 143 counts as a failure for
+  `OnFailure`. Restart it only when the sessions can reconnect.
+- *Secrets in the transcript.* A shell variable that held a `docker exec -e REDISCLI_AUTH=<pw>` command line printed the FalkorDB
+  password when it failed with "command not found", and reading `~/.hermes/config.yaml` printed the vLLM api_key. Both are
+  loopback-only. Use a wrapper script that reads the secret itself and never echoes it.
+
+**JL 결정 필요**
+1. `graphiti-session-sync` 처리: A) 타이머 중단(권장 — 페이로드가 메타데이터뿐이라 그래프 가치 없음), B) 오류 검사 + 공유 서버(8765)
+   전송만 고쳐 유지, C) 세션 요약을 넣는 새 설계(목적·프라이버시 먼저 결정).
+2. 이번 두 커밋을 fork `origin/main` 에 push 할지(머지 검토 후) — 이 문서와 함께 진행됨.
+3. `temporal-verify-*` 테스트 그래프 2개 삭제 여부.
+4. FalkorDB 비밀번호·vLLM api_key 회전 여부(대화 기록에 노출됨, loopback 전용).
+5. `graphiti-mcp.service` 에 `SuccessExitStatus=143` 추가 여부.

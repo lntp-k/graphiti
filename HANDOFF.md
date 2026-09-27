@@ -215,9 +215,9 @@ Facts below were measured on 2026-09-26 unless noted.
 - Temporal invalidation is now verified end to end: a contradicting episode sets `invalid_at` (= new event `valid_at`) and
   `expired_at` on the old edge. Two-episode latency fell from 211 s to about 38 s. Evidence and rejected alternatives: ADR 0004.
 - Code: commits `859938a` (`extra_body` in schema/factory/test/config) and `351ee4b` (`json_schema`) on `main`. The running
-  `graphiti-mcp.service` was restarted after the second config edit (started 19:39:46 KST), so it runs this content.
-- `graphiti-session-sync` (repo `~/coding/graphiti-session-sync`, not modified today) has **never ingested anything**: all 5,767
-  rows in `~/.local/share/graphiti-session-sync/state.sqlite3` carry `isError` (`add_memory` requires `episode_body`; the sync
+  `graphiti-mcp.service` was restarted after the second config edit (systemd ActiveEnter 19:39:43 KST), so it runs this content.
+- `graphiti-session-sync` (repo `~/coding/graphiti-session-sync`, not modified today) has **never ingested anything**: every row (5,767 when counted, 5,788 on 2026-09-27; the timer keeps adding failures)
+  in `~/.local/share/graphiti-session-sync/state.sqlite3` carry `isError` (`add_memory` requires `episode_body`; the sync
   sends `body`), and it does not check `isError`, so it recorded them as ingested. FalkorDB has no `claude-code-sessions` graph.
   Two further reasons a field-name fix alone would still lose data: the sync starts a stdio MCP child and terminates it within
   5 s of `add_memory`, which only queues the episode; and the episode body is metadata only (sha256, sizes, counts).
@@ -240,7 +240,7 @@ Facts below were measured on 2026-09-26 unless noted.
   setting at a time and reading the graph after each change found the cause in one round.
 - *Wrong completion signal.* The first test polled `get_episodes`, which stays at 0, and waited 8 minutes for a condition that
   could not trigger. Querying FalkorDB directly showed the state at once.
-- *Restart side effects.* A restart of the shared service ended 6 live client sessions and exit code 143 counts as a failure for
+- *Restart side effects.* A restart of the shared service ended 7 live client sessions and exit code 143 counts as a failure for
   `OnFailure`. Restart it only when the sessions can reconnect.
 - *Secrets in the transcript.* A shell variable that held a `docker exec -e REDISCLI_AUTH=<pw>` command line printed the FalkorDB
   password when it failed with "command not found", and reading `~/.hermes/config.yaml` printed the vLLM api_key. Both are
@@ -253,3 +253,44 @@ Facts below were measured on 2026-09-26 unless noted.
 3. `temporal-verify-*` 테스트 그래프 2개 삭제 여부.
 4. FalkorDB 비밀번호·vLLM api_key 회전 여부(대화 기록에 노출됨, loopback 전용).
 5. `graphiti-mcp.service` 에 `SuccessExitStatus=143` 추가 여부.
+
+## 2026-09-27 handoff — push blocked, session-sync decision (JL)
+
+**Decision (JL, 2026-09-27):** `graphiti-session-sync` becomes **option C — a new pipeline that ingests real summarized
+session content — but later**, not now. Options A (stop the timer) and B (repair plumbing only) were not chosen. Nothing was
+changed in `graphiti-session-sync`, so its timer (`graphiti-session-sync.timer`, every 5 min) is **still running** and still
+records false successes (5,788 rows, all `isError`). Whether to stop it in the meantime was not decided; stopping it loses
+nothing (no row ever reached the graph) and is reversible (`systemctl --user disable --now graphiti-session-sync.timer`).
+
+**Prerequisites for C** (decide before writing code; ADR first):
+1. Purpose: what should the graph answer that memory files / `list_events` cannot? Without that, extraction has no target.
+2. Privacy: session text can carry client data and case identifiers. Decide what may be sent (summary only? anonymised?) and
+   the `group_id` scheme; ids allow ASCII alphanumerics, `-`, `_` only. The existing rule "no client real data until access
+   control is settled" (ADR 0002) still applies.
+3. Transport: use the shared streamable-HTTP server (127.0.0.1:8765), not a stdio child. `add_memory` only queues; a child
+   killed 5 s later loses the queue.
+4. Result check: treat a reply with `isError`, or a missing episode in the graph, as failure. Never record success from the reply
+   alone. Poll FalkorDB, not `get_episodes` (returns 0 there).
+5. Throughput: ~13-25 s per episode with thinking off (ADR 0004), one worker per group; size batches accordingly.
+6. Failure handling: the queue drops a failed episode after logging (no retry); C needs its own retry/dead-letter list.
+
+**Push status (unresolved):** local `main` = `36a889b` plus the commit that carries this section; `origin/main` = `c9d6cda`.
+The local CI gate rejected the push at step `ruff-check` (exit 2): `ruff` cannot create `.ruff_cache` in the read-only checkout
+(run `2caffb728acd4ebe8b53fc9d534bbe69`, log `logs/000.log` under `~/.local/state/internal-ci/push-gate-runs/`). Cause is in
+`~/coding/internal-ci/profiles/graphiti-lint.json` (no `--no-cache`); the fix needs a new profile digest in
+`repository-registry.json`. A request was sent on 2026-09-27 to the internal-ci session (peer `npbhtx27`, session "HANDOFF 문서
+검토 및 미해결 항목 정리"); the peer send succeeded, the session-message send was reported undelivered, and there was no reply
+yet (that session was idle; idle sessions are not woken by messages). **Next step:** check `git -C ~/coding/internal-ci log`
+for a graphiti-lint change; if none, ask JL to nudge that session. When the gate passes: the Opus approval recorded on
+2026-09-26 covers `859938a..36a889b` only. This commit changes HANDOFF.md only, but `--begin`/review must be redone for the
+new HEAD before `git push origin main`, then compare `git ls-remote origin main` with `git rev-parse HEAD`.
+
+**Other open items (unchanged):** `get_episodes` returns 0 on FalkorDB; queue drops failed episodes; no legal-domain entity or
+edge types; `graphiti-mcp.service` exits 143 on a normal restart and fires `OnFailure` (`SuccessExitStatus=143` missing);
+`temporal-verify-20260915*` test graphs still present; FalkorDB password and vLLM api_key appeared in a 2026-09-26 transcript
+(loopback only, rotation undecided).
+
+**JL 결정 필요**
+1. 세션 동기화 타이머를 C 착수 전까지 멈춰 둘지(멈춰도 잃는 것 없음, 되돌리기 쉬움).
+2. C 의 목적·프라이버시 범위(위 선행조건 1·2) — 설계 착수 시 문과생 브리프로 먼저 정리.
+3. 나머지(테스트 그래프 삭제, 키 회전, SuccessExitStatus=143)는 이전 항목 그대로.

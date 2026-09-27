@@ -36,7 +36,7 @@
 - ~~**실제 episode 추가 → 시간성 검증**(구 사실 invalid_at 자동 처리)은 이번 세션에서
   재현하지 않았다.~~ → **2026-09-15 재검증 시도, 부분 성공/부분 미확인으로 종료.**
   격리 그룹 `temporal-verify-20260915`(+ 검증용 보조 그룹
-  `temporal-verify-20260915-probe`)로 실측, 종료 후 둘 다 `clear_graph`로 정리 완료.
+  `temporal-verify-20260915-probe`)로 실측, 종료 후 둘 다 `clear_graph`로 정리 완료. **[정정 2026-09-27: 거짓 — `temporal-verify-20260915` 에 3노드가 남아 있었고 2026-09-27 에 GRAPH.DELETE 로 삭제함]**
   절차와 근거는 `.superpowers/sdd/2026-09-15-access-control-and-temporal-validation/task-2-report.md` 참고.
 
   **확인된 것 (Step 1~4, 7):**
@@ -288,9 +288,27 @@ new HEAD before `git push origin main`, then compare `git ls-remote origin main`
 **Other open items (unchanged):** `get_episodes` returns 0 on FalkorDB; queue drops failed episodes; no legal-domain entity or
 edge types; `graphiti-mcp.service` exits 143 on a normal restart and fires `OnFailure` (`SuccessExitStatus=143` missing);
 `temporal-verify-20260915*` test graphs still present; FalkorDB password and vLLM api_key appeared in a 2026-09-26 transcript
-(loopback only, rotation undecided).
+(vLLM listens on 0.0.0.0:8012 behind a Bearer key, so "loopback only" was wrong for it; both keys rotated 2026-09-27, see below).
 
 **JL 결정 필요**
 1. 세션 동기화 타이머를 C 착수 전까지 멈춰 둘지(멈춰도 잃는 것 없음, 되돌리기 쉬움).
 2. C 의 목적·프라이버시 범위(위 선행조건 1·2) — 설계 착수 시 문과생 브리프로 먼저 정리.
 3. 나머지(테스트 그래프 삭제, 키 회전, SuccessExitStatus=143)는 이전 항목 그대로.
+
+## 2026-09-27 execution — remaining decisions carried out (advice: Opus + Sol/Codex, read-only)
+
+Both advisors agreed on every item except the ruff step scope; the measured result (Opus reproduced `format --check` exit 2
+in a write-protected clone) was adopted over Sol's "check only".
+
+| Item | Done | Evidence |
+|---|---|---|
+| Stop `graphiti-session-sync.timer` | `disable --now`; state DB moved to `~/.local/share/graphiti-session-sync/state.sqlite3.poisoned-20260927` (kept as the future backfill list; a live DB would make a revived sync skip every file) | `is-enabled` = disabled, no timer listed |
+| Test graphs | `temporal-verify-20260915` and `...-probe` deleted; `default_db` and `_unassigned` kept (configured DB name and default-group sentinel) | `GRAPH.LIST` = 2 graphs, `DBSIZE` 4; pre-delete backup `backups/falkordb-backup-20260927.tgz` (gitignored; note it holds everything except the deleted test graph is not in the 09-15 tarball) |
+| FalkorDB password | rotated (alphanumeric, `~/.hermes/.env`, container recreated with same volume via `mcp_server/docker/run-falkordb.sh`), graphiti-mcp restarted | new PONG, old rejected, unauthenticated NOAUTH, graph list intact, `add_memory` smoke wrote 2 entities |
+| vLLM api key | rotated in `~/.config/qwen38/api-key`, `~/.hermes/config.yaml` (7 places) and its 2026-09-25 backup; vLLM unit restarted (4 min 18 s), then hermes-gateway, hermes-webui, hermes-standalone-webui, dsh-web, graphiti-mcp | `/v1/models` 200 with new key, 401 without; graphiti `add_memory` smoke through the LLM succeeded; no 401 in consumer logs. Mac: no reference to Spark 8012. Hostinger: no `~/.hermes` for the ssh user and no reference found; not exhaustively verified |
+| `graphiti-mcp.service` exit 143 | `SuccessExitStatus=143` and `Restart=always` in `spark-infra/systemd/graphiti-mcp.service` (local commit `363d416`, not pushed: spark-infra `main` is 10 commits ahead of origin with an unrelated foreign-commit block) and installed | `systemctl --user show` reports both; `Restart=always` because 143 as "success" would otherwise leave the service down after a stray SIGTERM to the child |
+| CI gate | `internal-ci` change to `profiles/graphiti-lint.json` (`--no-cache` on both ruff steps) + registry digest, run/gate/merge from the trusted checkout, Opus review, then push and trusted rebaseline (status in the final report below) | profile run on graphiti-src `d3cfec4` inside the bwrap sandbox: ruff-check and ruff-format passed |
+
+Still open: option C (content-summarising session sync) is deferred by JL; `spark-infra` inventory row for the sync is
+being corrected by that repo's session (peer request sent); `kure-embed.service` has `OnFailure=` in `[Service]` instead
+of `[Unit]` (systemd ignores it, so its failure alert never fires) — unfixed, other repo.

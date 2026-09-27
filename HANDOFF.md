@@ -303,12 +303,18 @@ in a write-protected clone) was adopted over Sol's "check only".
 | Item | Done | Evidence |
 |---|---|---|
 | Stop `graphiti-session-sync.timer` | `disable --now`; state DB moved to `~/.local/share/graphiti-session-sync/state.sqlite3.poisoned-20260927` (kept as the future backfill list; a live DB would make a revived sync skip every file) | `is-enabled` = disabled, no timer listed |
-| Test graphs | `temporal-verify-20260915` and `...-probe` deleted; `default_db` and `_unassigned` kept (configured DB name and default-group sentinel) | `GRAPH.LIST` = 2 graphs, `DBSIZE` 4; pre-delete backup `backups/falkordb-backup-20260927.tgz` (gitignored; note it holds everything except the deleted test graph is not in the 09-15 tarball) |
+| Test graphs | `temporal-verify-20260915` and `...-probe` deleted; `default_db` and `_unassigned` kept (configured DB name and default-group sentinel) | `GRAPH.LIST` = 2 graphs, `DBSIZE` 4; pre-delete backup `backups/falkordb-backup-20260927.tgz` (gitignored; taken before the deletion, so it still holds the two test graphs; the 09-15 tarball predates them) |
 | FalkorDB password | rotated (alphanumeric, `~/.hermes/.env`, container recreated with same volume via `mcp_server/docker/run-falkordb.sh`), graphiti-mcp restarted | new PONG, old rejected, unauthenticated NOAUTH, graph list intact, `add_memory` smoke wrote 2 entities |
 | vLLM api key | rotated in `~/.config/qwen38/api-key`, `~/.hermes/config.yaml` (7 places) and its 2026-09-25 backup; vLLM unit restarted (4 min 18 s), then hermes-gateway, hermes-webui, hermes-standalone-webui, dsh-web, graphiti-mcp | `/v1/models` 200 with new key, 401 without; graphiti `add_memory` smoke through the LLM succeeded; no 401 in consumer logs. Mac: no reference to Spark 8012. Hostinger: no `~/.hermes` for the ssh user and no reference found; not exhaustively verified |
 | `graphiti-mcp.service` exit 143 | `SuccessExitStatus=143` and `Restart=always` in `spark-infra/systemd/graphiti-mcp.service` (local commit `363d416`, not pushed: spark-infra `main` is 10 commits ahead of origin with an unrelated foreign-commit block) and installed | `systemctl --user show` reports both; `Restart=always` because 143 as "success" would otherwise leave the service down after a stray SIGTERM to the child |
-| CI gate | `internal-ci` change to `profiles/graphiti-lint.json` (`--no-cache` on both ruff steps) + registry digest, run/gate/merge from the trusted checkout, Opus review, then push and trusted rebaseline (status in the final report below) | profile run on graphiti-src `d3cfec4` inside the bwrap sandbox: ruff-check and ruff-format passed |
+| CI gate | `internal-ci` change to `profiles/graphiti-lint.json` (`--no-cache` on both ruff steps) + registry digest, run/gate/merge from the trusted checkout, Opus APPROVE, pushed as `internal-ci` `35a6b2d` (remote SHA compared), trusted checkout and `trusted.sha` rebaselined to that SHA (no `git pull`) | profile run on graphiti-src `d3cfec4` inside the bwrap sandbox: ruff-check and ruff-format passed |
 
 Still open: option C (content-summarising session sync) is deferred by JL; `spark-infra` inventory row for the sync is
 being corrected by that repo's session (peer request sent); `kure-embed.service` has `OnFailure=` in `[Service]` instead
 of `[Unit]` (systemd ignores it, so its failure alert never fires) — unfixed, other repo.
+
+**Publishing an `internal-ci` change (worked 2026-09-27):** two clean clones (candidate, target); from the trusted checkout run
+`python3 -m internal_ci run` (run root must be mode 0700) with `profiles/internal-ci-gate.json`, then `gate`, then `merge`
+(fetch the candidate object into the target clone first, otherwise `fast_forward_unavailable`); review lock on the target
+clone, Opus verdict, `git -C <literal path> push origin main`; then `fetch` + `checkout --detach <sha>` in
+`~/.local/share/internal-ci/push-gate/trusted` and write the SHA to `trusted.sha`.

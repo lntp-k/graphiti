@@ -248,9 +248,14 @@ async def test_end_to_end_add_search_delete_clear():
             status = await client.call('get_status', {})
             assert isinstance(status, dict) and status.get('status') == 'ok', f'status: {status}'
 
-            # 6. Delete the episode, then clear the test group.
-            deleted = await client.call('delete_episode', {'uuid': episode_uuid})
+            # 6. Delete the episode from its named FalkorDB graph, then verify
+            # it is absent before clearing the test group.
+            deleted = await client.call('delete_episode', {'uuid': episode_uuid, 'group_id': group})
             assert isinstance(deleted, dict) and 'message' in deleted, f'delete_episode: {deleted}'
+
+            remaining = await client.call('get_episodes', {'group_id': group, 'last_n': 10})
+            assert isinstance(remaining, dict), f'get_episodes: {remaining}'
+            assert episode_uuid not in {episode['uuid'] for episode in remaining['episodes']}
 
             cleared = await client.call('clear_graph', {'group_ids': [group]})
             assert isinstance(cleared, dict) and 'message' in cleared, f'clear_graph: {cleared}'

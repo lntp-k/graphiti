@@ -193,16 +193,26 @@ async def test_concurrent_group_ids_keep_independent_drivers():
 async def test_remove_episode_routes_to_requested_group(monkeypatch):
     """Deletion must use the same per-group FalkorDB routing as ingestion."""
     graphiti, base_driver = _make_graphiti(database='default_db')
-    episode = SimpleNamespace(uuid='episode-1', entity_edges=[], delete=AsyncMock())
+    episode = SimpleNamespace(uuid='episode-1', entity_edges=['edge-1'], delete=AsyncMock())
+    edge = SimpleNamespace(uuid='edge-1', episodes=[episode.uuid])
+    node = SimpleNamespace(uuid='node-1')
     get_by_uuid = AsyncMock(return_value=episode)
+
+    async def count_mentions(self, *_args, **_kwargs):
+        return ([{'episode_count': 1}], None, None)
 
     monkeypatch.setattr('graphiti_core.graphiti.EpisodicNode.get_by_uuid', get_by_uuid)
     monkeypatch.setattr(
-        'graphiti_core.graphiti.EntityEdge.get_by_uuids', AsyncMock(return_value=[])
+        'graphiti_core.graphiti.EntityEdge.get_by_uuids', AsyncMock(return_value=[edge])
     )
-    monkeypatch.setattr('graphiti_core.graphiti.get_mentioned_nodes', AsyncMock(return_value=[]))
-    monkeypatch.setattr('graphiti_core.graphiti.Edge.delete_by_uuids', AsyncMock())
-    monkeypatch.setattr('graphiti_core.graphiti.Node.delete_by_uuids', AsyncMock())
+    monkeypatch.setattr(
+        'graphiti_core.graphiti.get_mentioned_nodes', AsyncMock(return_value=[node])
+    )
+    delete_edges = AsyncMock()
+    delete_nodes = AsyncMock()
+    monkeypatch.setattr('graphiti_core.graphiti.Edge.delete_by_uuids', delete_edges)
+    monkeypatch.setattr('graphiti_core.graphiti.Node.delete_by_uuids', delete_nodes)
+    monkeypatch.setattr(FakeDriver, 'execute_query', count_mentions)
 
     await graphiti.remove_episode('episode-1', group_id='coding-wiki')
 
@@ -210,4 +220,10 @@ async def test_remove_episode_routes_to_requested_group(monkeypatch):
     assert scoped_driver is not base_driver
     assert scoped_driver._database == 'coding-wiki'
     assert base_driver._database == 'default_db'
+    assert graphiti.driver.clone_calls == ['coding-wiki']
+    assert graphiti.driver._database == 'default_db'
+    assert graphiti.clients.driver is base_driver
+    assert get_by_uuid.await_args.args[0] is scoped_driver
+    delete_edges.assert_awaited_once_with(scoped_driver, ['edge-1'])
+    delete_nodes.assert_awaited_once_with(scoped_driver, ['node-1'])
     episode.delete.assert_awaited_once_with(scoped_driver)

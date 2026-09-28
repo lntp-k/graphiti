@@ -695,7 +695,10 @@ async def delete_entity_edge(uuid: str) -> SuccessResponse | ErrorResponse:
 
 
 @mcp.tool()
-async def delete_episode(uuid: str) -> SuccessResponse | ErrorResponse:
+async def delete_episode(
+    uuid: str,
+    group_id: str | None = None,
+) -> SuccessResponse | ErrorResponse:
     """Delete an episode from the graph memory.
 
     Uses Graphiti.remove_episode, which cascades the deletion: entities and facts
@@ -704,6 +707,8 @@ async def delete_episode(uuid: str) -> SuccessResponse | ErrorResponse:
 
     Args:
         uuid: UUID of the episode to delete
+        group_id: Optional group containing the episode. Required when a
+            FalkorDB deployment stores that group in a non-default graph.
     """
     global graphiti_service
 
@@ -715,7 +720,7 @@ async def delete_episode(uuid: str) -> SuccessResponse | ErrorResponse:
 
         # remove_episode cascades cleanup of episode-created entities/edges,
         # unlike EpisodicNode.delete which would orphan them.
-        await client.remove_episode(uuid)
+        await client.remove_episode(uuid, group_id=group_id)
         return SuccessResponse(message=f'Episode with UUID {uuid} deleted successfully')
     except Exception as e:
         error_msg = str(e)

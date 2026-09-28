@@ -26,8 +26,9 @@ limitations under the License.
 # mutating shared instance state.
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -186,3 +187,27 @@ async def test_concurrent_group_ids_keep_independent_drivers():
     # Shared driver still points at the original default database.
     assert graphiti.driver._database == 'default_db'
     assert graphiti.clients.driver._database == 'default_db'
+
+
+@pytest.mark.asyncio
+async def test_remove_episode_routes_to_requested_group(monkeypatch):
+    """Deletion must use the same per-group FalkorDB routing as ingestion."""
+    graphiti, base_driver = _make_graphiti(database='default_db')
+    episode = SimpleNamespace(uuid='episode-1', entity_edges=[], delete=AsyncMock())
+    get_by_uuid = AsyncMock(return_value=episode)
+
+    monkeypatch.setattr('graphiti_core.graphiti.EpisodicNode.get_by_uuid', get_by_uuid)
+    monkeypatch.setattr(
+        'graphiti_core.graphiti.EntityEdge.get_by_uuids', AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr('graphiti_core.graphiti.get_mentioned_nodes', AsyncMock(return_value=[]))
+    monkeypatch.setattr('graphiti_core.graphiti.Edge.delete_by_uuids', AsyncMock())
+    monkeypatch.setattr('graphiti_core.graphiti.Node.delete_by_uuids', AsyncMock())
+
+    await graphiti.remove_episode('episode-1', group_id='coding-wiki')
+
+    scoped_driver = get_by_uuid.await_args.args[0]
+    assert scoped_driver is not base_driver
+    assert scoped_driver._database == 'coding-wiki'
+    assert base_driver._database == 'default_db'
+    episode.delete.assert_awaited_once_with(scoped_driver)

@@ -253,7 +253,9 @@ async def test_end_to_end_add_search_delete_clear():
             deleted = await client.call('delete_episode', {'uuid': episode_uuid, 'group_id': group})
             assert isinstance(deleted, dict) and 'message' in deleted, f'delete_episode: {deleted}'
 
-            remaining = await client.call('get_episodes', {'group_id': group, 'last_n': 10})
+            remaining = await client.call(
+                'get_episodes', {'group_ids': [group], 'max_episodes': 10}
+            )
             assert isinstance(remaining, dict), f'get_episodes: {remaining}'
             assert episode_uuid not in {episode['uuid'] for episode in remaining['episodes']}
 

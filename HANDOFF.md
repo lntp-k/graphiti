@@ -1,5 +1,7 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
+> 문서 버전 v1 — 2026-10-20
+
 ## 무엇을 했나
 
 2026-09-15, JL 지시로 이전 graphiti-src/graphiti-eval 로컬 구성을 백업 없이 전부 삭제하고
@@ -318,3 +320,18 @@ of `[Unit]` (systemd ignores it, so its failure alert never fires) — unfixed, 
 (fetch the candidate object into the target clone first, otherwise `fast_forward_unavailable`); review lock on the target
 clone, Opus verdict, `git -C <literal path> push origin main`; then `fetch` + `checkout --detach <sha>` in
 `~/.local/share/internal-ci/push-gate/trusted` and write the SHA to `trusted.sha`.
+
+## 2026-10-19 update — secrets moved out of ~/.hermes (Spark Hermes removed)
+
+- Spark Hermes and `~/.hermes` were removed on 2026-10-19 (JL decision). `df698a3` (on
+  `origin/main`, Opus-approved) makes `mcp_server/run-mcp.sh` read `FALKORDB_PASSWORD` from
+  `~/.config/graphiti/falkordb.env` and the vLLM key from `~/.config/qwen38/api-key`;
+  `mcp_server/docker/run-falkordb.sh` reads the same env file. Both files are mode 600.
+- The `~/.hermes/.env` / `~/.hermes/config.yaml` mentions in the sections above are history; the
+  current locations are the two files named here.
+- Verified: `graphiti-mcp.service` restarted on the new paths and stayed running; a missing file
+  makes either script exit non-zero (measured with `HOME=/nonexistent` by the reviewer).
+- Publication scope: `df698a3` only; originally committed by the session that removed Hermes,
+  published by its follow-up session `f79a3514`.
+- Not done: `~/.config/systemd/user/graphiti-session-sync.service` (the retired v1 unit, static,
+  timer disabled) still sets `HERMES_HOME`; it does not run.

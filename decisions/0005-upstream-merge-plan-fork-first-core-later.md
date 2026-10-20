@@ -1,9 +1,10 @@
 # ADR 0005: merge upstream into the fork first, update graphiti-core later
 
-> Document version v2 — 2026-10-20
+> Document version v3 — 2026-10-20
 
 Status: accepted (JL, 2026-10-20: "ADR 0005 순서대로 병합 진행해, watchdog는 제거"). Steps 1-2 executed on
-2026-10-20; see "Execution". Step 3 (graphiti-core update) is still open.
+2026-10-20; see "Execution". Step 3 validation and the core lock update are recorded below.
+Source publication and runtime verification are separate milestones.
 
 ## Context (measured 2026-10-20)
 
@@ -117,3 +118,109 @@ Status: accepted (JL, 2026-10-20: "ADR 0005 순서대로 병합 진행해, watch
   `delete_episode`, `clear_graph`). 18/18 passed; the old fact got `invalid_at` 2026-06-01; both episodes processed in
   40 s. Node/edge/episode counts of `infra-memory`, `infra-wiki`, `coding-wiki` were identical before and after. The empty
   throwaway graph was dropped with `GRAPH.DELETE`.
+
+
+## Step 3 validation and dependency promotion (2026-10-20, Codex continuation)
+
+The lock now selects PyPI graphiti-core **0.31.1**, constrained to `>=0.31.1,<0.32`.
+Only that package changed; MCP remains 2.2.0. The installed production environment
+was kept on 0.30.2 throughout candidate validation. Deployment follows the independent
+latest-Sol gate, protected exact-SHA CI/push, `uv sync --locked`, and a service restart.
+The continuation's live closeout is retained under
+`session-work/20261020-core-followup/CORE-FOLLOWUP-v2.md` (local only).
+
+### Newly measured evidence
+
+- Original human approval was re-read in Claude session `0680ca13-9d13-4a07-bcbe-dc2797118ae3`,
+  user event `2026-10-20T14:06:29.519Z`: "ADR 0005 순서대로 병합 진행해, watchdog는 제거".
+- Fork production/main and remote main matched `ce046f065998ce57797c49fb88e57c7a04d818f8` at intake.
+  The service was healthy. Post-deployment v2 timer runs, including 23:41:18 KST,
+  ended successfully with `build_errors=0` and `dead_letter_count_this_run=0`.
+  These idle runs alone do not prove an ingestion occurred.
+- The actual `GraphitiHttpClient` from graphiti-session-sync's existing MCP 1.30
+  environment called production's MCP 2.2 server with a synthetic episode in a new
+  test group. Persistence, explicit-group provenance, nonempty node/fact searches,
+  edge get/delete, episode deletion, and clear all passed. No consumer code change
+  was necessary. Callers of the three UUID tools must pass the actual `group_id`.
+- A new completed `BGSAVE` RDB was copied to
+  `/home/jl/Documents/graphiti-falkordb-snapshots/20261020-pre-core-2345/`.
+  `dump.rdb` is 7,320,346 bytes, SHA256
+  `9b9f0758bce5c0fb5bb75b11497f42b6489bdad562e4fe7ca99ad6cb86194616`.
+  `SHA256SUMS` verified. This is a consistent RDB checkpoint, not a stopped-container
+  filesystem/AOF copy; the directory suffix is an identifier, not the capture time.
+- Restore drill: a disposable FalkorDB using the exact production image digest
+  `sha256:0d793d4b249a9cf0837faa9f30fea1b86fb50086fc8aa21e9447078a07f995bc`
+  loaded that read-only RDB on loopback port 6381. It used `--entrypoint redis-server`
+  explicitly: the image's normal run.sh ignores positional Redis options.
+  Candidate MCP ran on 8766 with a separate environment using the PyPI 0.31.1 wheel.
+- Range/fulltext index creation passed on the **copy** of `infra-memory`, `infra-wiki`,
+  `coding-wiki`, `default_db`, and `_unassigned`. Node/edge/episode counts stayed equal
+  to production. The three populated groups respectively had 248/705/20,
+  218/497/45, and 96/158/18; the sentinels were empty.
+- Fixed read queries (`get_episodes`, `search_nodes`, `search_memory_facts`, ten
+  results each) across the three populated groups returned identical sorted UUID-set
+  hashes on production 0.30.2 and the copy with 0.31.1: nine comparisons passed.
+  Only hashes/counts were saved in the repository's local work area, not real content.
+- Candidate tests against its **installed wheel**, from `mcp_server/`: 52 tests for
+  parity/routing/delete/config plus 36 factory tests passed (88 total). A first test
+  invocation from the repository root imported in-tree core and stopped on missing
+  optional google-genai; it is not candidate evidence. The optional Gemini reranker
+  collection was not claimed as passing. Factory tests cover local extra_body wiring;
+  no provider extras were installed into production.
+- Synthetic CRUD/search with the real v2 consumer passed on the candidate, including
+  nonempty searches and explicit-group edge deletion. The ADR 0004 contradiction pair
+  passed 19/19 on both current 0.30.2 and candidate 0.31.1 when all stored synthetic
+  edges were inspected directly: the old affiliation had invalid_at 2026-06-01.
+  The earlier candidate check through ranked search returned 18/19 (old invalidated
+  fact absent from the result). That run remains a failed search-based assertion;
+  the direct-edge rerun does not prove the cause of that earlier omission.
+  Both direct-edge sweeps took about 44 s under shared LLM load; no speedup claim.
+- Only local vLLM 8012 and KURE 8002 served model requests in the candidate log.
+  Factories still select the local OpenAI-compatible clients and no `llm_runtime` is
+  supplied, so Jev/OpenAI Decisions routing remains opt-in and inactive.
+- Git changes are limited to the dependency constraint/lock and these two documents.
+  No spark-infra files or existing worktrees were changed/removed. All test writes and
+  deletes were confined to this continuation's newly-created synthetic groups.
+
+### Remaining limitation
+
+As verified from GitHub releases and PyPI, 0.31.1 is the latest release. Commit
+`c38d7c1185ed5d6b699a8e2ba0856bc6a2cf0f1e` (#2025) is **after** v0.31.1.
+The wheel still deletes an edge whose first provenance episode is removed, even if
+another episode restated it. This update does not fix that pre-existing defect.
+Do not delete real episodes to test it. Re-run the restated-fact check on a fresh
+synthetic group when a release containing #2025 is available; do not substitute
+in-tree code for the pinned PyPI artifact.
+
+### Restore / rollback runbook
+
+1. Prefer application rollback if service/tool checks regress: preserve logs and stop
+   new ingestion, revert this dependency promotion through the normal independent
+   review and push gates, run `uv sync --locked` in `mcp_server/`, then restart
+   `graphiti-mcp.service`. Check health, explicit-group reads and v2 consumer behavior.
+   The backed-up pre-change pyproject/lock and `ce046f0` identify the 0.30.2 state.
+2. Keep production data in place for an application-only rollback. No data-format
+   migration is part of this change. A snapshot restore discards writes made after
+   its checkpoint and requires a separate, explicit recovery decision.
+3. Before any data recovery, verify SHA256SUMS and preserve the then-current volume
+   plus AOF; never overwrite the only copy. Restore the RDB into a **new** isolated
+   volume using the image digest above, appendonly disabled, an explicit redis-server
+   entrypoint, and loopback binding. Do not combine the old RDB with newer AOF files:
+   Redis may prefer AOF and silently bypass the intended checkpoint.
+4. Check GRAPH.LIST and the five groups' node/edge/episode counts against the values
+   above; build indices and run read comparisons there first. This drill was executed
+   on the disposable instance. Switching production to that volume is a separate
+   recovery operation; it was not performed by this validation.
+
+### Work units and reuse
+
+| Unit | Inputs and dependencies | Status and evidence | Reuse / rerun reason |
+|---|---|---|---|
+| Intake and post-merge consumer | ce046f0, original approval, live units, existing MCP 1.30 consumer | Newly checked; timer, production-probe-v2.log | Historical health and idle timer success were insufficient |
+| Backup, restore, indices and reads | New RDB hash, pinned FalkorDB image, production 0.30.2 and isolated 0.31.1 | Newly checked; snapshot.log, inventory.log, index-copy.log, compare-reads.log | Backup was restored and counted, not assumed usable |
+| Candidate behavior and dependency promotion | PyPI wheel, unchanged local model config, new dependency lock | 88 unit checks; candidate-probe.log; candidate-temporal-v2.log 19/19 | Existing merge sweep was adapted; all affected runtime checks rerun |
+| Publish and activate | Committed promotion SHA, post-lock direct-child Sol APPROVE, exact-SHA CI | Required after this source milestone; live closeout retained separately | Old Opus approval for ce046f0 cannot approve a new SHA |
+
+Independent reads and environment setup were batched; shared-file changes and review,
+push and activation stay sequential. No prior test result was reused as a pass for
+0.31.1. Timings under shared GPU load do not establish an old/new performance difference.

@@ -1,6 +1,6 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v3 — 2026-10-20
+> 문서 버전 v4 — 2026-10-20
 
 ## 무엇을 했나
 
@@ -367,3 +367,21 @@ clone, Opus verdict, `git -C <literal path> push origin main`; then `fetch` + `c
 - The stdio idle timeout no longer exists; production is HTTP only (`graphiti-mcp.service`).
 - Pre-merge FalkorDB copy: `/home/jl/Documents/graphiti-falkordb-snapshots/20261020-pre-merge/`.
 - Still open: graphiti-core update (ADR 0005 step 3 checklist), preferably to the first release with #2025.
+
+
+## 2026-10-20 Codex continuation — core 0.31.1 validated and lock promoted
+
+- ADR 0005 step 3 validation is now recorded in its "Step 3 validation" section:
+  fresh verified RDB plus restore drill, index construction on the copy, nine fixed
+  read comparisons, 88 installed-wheel unit tests, synthetic consumer/CRUD tools and
+  direct-edge temporal sweeps (19/19 current and candidate).
+- mcp_server's lock selects PyPI graphiti-core 0.31.1; MCP stays 2.2.0. Existing v2
+  consumer code needs no SDK migration. The source milestone precedes independent
+  Sol review, protected push and runtime activation; the local live closeout is
+  `session-work/20261020-core-followup/CORE-FOLLOWUP-v2.md`.
+- Known pre-existing limitation remains: v0.31.1 excludes #2025. Deleting a real
+  episode may delete a fact restated by a later episode. No real graph was used for
+  destructive testing. Await a release containing the fix before claiming it solved.
+- Backup and rollback procedure: ADR 0005. Production volume restoration was not
+  performed. Existing worktrees and unrelated local files were preserved; spark-infra
+  writes belong to the separate integration chat.

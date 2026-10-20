@@ -1,4 +1,4 @@
-> Document version v1 — 2026-10-21
+> Document version v2 — 2026-10-21
 
 # Linux installation-write audit
 
@@ -48,6 +48,34 @@ rule after the next planned host reboot; this helper does not reboot or reload a
 rules. If `mcp_server` itself is moved/replaced, rerun activation and verify the
 watch before relying on it. Kernel audit watches do not cross mounted subtrees;
 a separately mounted `.venv` needs its own separately reviewed watch.
+
+## Explicit root-only log migration on a fresh default installation
+
+Ubuntu's fresh `auditd` package may configure `log_group = adm` and root:adm
+0750 log-directory permissions. Default activation still refuses this wider
+read access. For this installation, explicitly opt into the reviewed migration:
+
+```sh
+sudo python3 /home/jl/coding/graphiti-src/mcp_server/observability/install_execution_audit.py --activate --private-logs
+```
+
+The option supports only the standard `/var/log/audit/audit.log`, a single
+`log_group` set to `adm` or `root`, and existing root-owned regular single-link
+`audit.log` / `audit.log.N` files. Custom paths/groups, duplicate directives,
+symlinks, hard links and unrelated directory entries cause refusal. It first saves
+`auditd.conf` byte-for-byte and original owner/group/mode metadata in a new
+root-owned 0700 `privacy-backup-*` directory beneath
+`/home/jl/coding/session-work/graphiti-execution-audit`; backup files are 0600 and
+previous backups are preserved.
+
+Only `log_group` is changed to `root`; other config settings remain intact. The
+log directory becomes root:root 0700, and current/rotated logs become root:root
+0600. Raw log bytes stay in place. The helper requests an auditd configuration
+reload with `auditctl --signal reload`, waits for its fresh successful
+`DAEMON_CONFIG` event, then rechecks log privacy before synthetic attribution.
+It does not stop auditd or flush audit rules. Already-private reactivation needs
+no new migration backup. Configuration/log rotation conflicts or reload failure
+leave the backup and report failure; privacy changes are not silently rolled back.
 
 ## Evidence and privacy
 

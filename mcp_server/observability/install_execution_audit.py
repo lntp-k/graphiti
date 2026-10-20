@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -32,6 +33,10 @@ def rule(directory: Path, key: str, action: str = '-a') -> list[str]:
 
 def canonical(value: str) -> tuple[str, ...]:
     tokens = shlex.split(value)
+    if '-S' in tokens:
+        index = tokens.index('-S')
+        if tokens[index + 1 : index + 2] == ['all']:
+            del tokens[index : index + 2]
     if '-k' in tokens:
         index = tokens.index('-k')
         tokens[index : index + 2] = ['-F', f'key={tokens[index + 1]}']
@@ -84,6 +89,189 @@ def check_privacy(config: Path = Path('/etc/audit/auditd.conf')) -> Path:
                 f'Audit log path must already be root-owned with root group and no group-write/other access, without symlinks: {item}'
             )
     return path
+
+
+def privatize_logs(
+    config: Path = Path('/etc/audit/auditd.conf'),
+    backup_root: Path = WORK,
+    expected_log: Path = Path('/var/log/audit/audit.log'),
+) -> Path | None:
+    """Explicit opt-in migration of only standard auditd log privacy; raw bytes stay in place."""
+    if os.geteuid() != 0:
+        raise RuntimeError('Root required for private audit log migration')
+    config_info = config.lstat()
+    if (
+        not stat.S_ISREG(config_info.st_mode)
+        or config_info.st_uid != 0
+        or config_info.st_nlink != 1
+    ):
+        raise RuntimeError('Audit configuration must be a regular root-owned single-link file')
+    original = config.read_bytes()
+    text = original.decode()
+    groups = list(
+        re.finditer(
+            r'^(?P<prefix>[ \t]*log_group[ \t]*=[ \t]*)(?P<value>[^\r\n#]*)(?P<comment>#[^\r\n]*)?$',
+            text,
+            re.MULTILINE,
+        )
+    )
+    files = re.findall(r'^\s*log_file\s*=\s*([^#\r\n]+)', text, re.MULTILINE)
+    if groups and groups[0].group('value').strip() not in ('adm', 'root', '0'):
+        raise RuntimeError('Private migration supports only default adm or root log_group')
+    if len(groups) > 1 or len(files) > 1:
+        raise RuntimeError(
+            'Duplicate audit log privacy directives; refusing ambiguous configuration'
+        )
+    log = Path(files[0].strip()) if files else Path('/var/log/audit/audit.log')
+    if log != expected_log or not log.is_absolute():
+        raise RuntimeError('Private migration supports only the reviewed standard audit log path')
+    directory = log.parent
+    directory_info = directory.lstat()
+    if not stat.S_ISDIR(directory_info.st_mode) or directory_info.st_uid != 0:
+        raise RuntimeError('Audit log directory must be a real root-owned directory')
+    entries = sorted(directory.iterdir())
+    if log not in entries:
+        raise RuntimeError('Current audit.log is missing; refusing partial migration')
+    infos = []
+    for entry in entries:
+        info = entry.lstat()
+        if (
+            not re.fullmatch(r'audit\.log(?:\.\d+)?', entry.name)
+            or not stat.S_ISREG(info.st_mode)
+            or info.st_uid != 0
+            or info.st_nlink != 1
+        ):
+            raise RuntimeError(
+                'Unexpected, linked, or non-root-owned audit log entry; refusing migration'
+            )
+        infos.append((entry, info))
+    if groups:
+        match = groups[0]
+        replacement = match.group('prefix') + 'root'
+        if match.group('comment'):
+            replacement += ' ' + match.group('comment')
+        updated = text[: match.start()] + replacement + text[match.end() :]
+    else:
+        updated = text + ('' if text.endswith('\n') else '\n') + 'log_group = root\n'
+    if (
+        updated.encode() == original
+        and directory_info.st_gid == 0
+        and stat.S_IMODE(directory_info.st_mode) == 0o700
+        and all(info.st_gid == 0 and stat.S_IMODE(info.st_mode) == 0o600 for _, info in infos)
+    ):
+        # A previous interrupted migration may have changed disk settings only.
+        reload_private_config(config)
+        return None
+    backup_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    parent_info = backup_root.lstat()
+    if (
+        not stat.S_ISDIR(parent_info.st_mode)
+        or parent_info.st_uid != 0
+        or stat.S_IMODE(parent_info.st_mode) != 0o700
+    ):
+        raise RuntimeError('Audit backup root must be a real root-owned 0700 directory')
+    backup = Path(tempfile.mkdtemp(prefix='privacy-backup-', dir=backup_root))
+
+    def save(name: str, contents: bytes) -> None:
+        descriptor = os.open(
+            backup / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+        )
+        with os.fdopen(descriptor, 'wb') as output:
+            output.write(contents)
+            output.flush()
+            os.fsync(output.fileno())
+
+    save('auditd.conf', original)
+    metadata = [
+        {
+            'path': str(item),
+            'uid': info.st_uid,
+            'gid': info.st_gid,
+            'mode': stat.S_IMODE(info.st_mode),
+        }
+        for item, info in [(config, config_info), (directory, directory_info), *infos]
+    ]
+    save('original-permissions.json', json.dumps(metadata, indent=2).encode())
+    # Check again after the backup; do not silently replace a concurrent administrator edit.
+    current_config = config.lstat()
+
+    def identity(info):
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_mtime_ns,
+            info.st_size,
+            info.st_uid,
+            info.st_gid,
+            info.st_mode,
+        )
+
+    if identity(current_config) != identity(config_info) or config.read_bytes() != original:
+        raise RuntimeError(
+            'Audit configuration changed concurrently; backup kept, migration refused'
+        )
+    descriptor, temporary = tempfile.mkstemp(prefix='.auditd.conf.graphiti-', dir=config.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as output:
+            output.write(updated.encode())
+            os.fchown(output.fileno(), config_info.st_uid, config_info.st_gid)
+            os.fchmod(output.fileno(), stat.S_IMODE(config_info.st_mode))
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, config)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    os.chown(directory, 0, 0, follow_symlinks=False)
+    os.chmod(directory, 0o700)
+    for entry, initial in infos:
+        current = entry.lstat()
+        if (current.st_dev, current.st_ino) != (initial.st_dev, initial.st_ino) or not stat.S_ISREG(
+            current.st_mode
+        ):
+            raise RuntimeError('Audit logs rotated concurrently; rerun migration; backup kept')
+        os.chown(entry, 0, 0, follow_symlinks=False)
+        os.chmod(entry, 0o600)
+    # HUP reloads auditd configuration without stopping it or flushing kernel rules.
+    reload_private_config(config)
+    print(f'Private audit log settings migrated; root-only backup: {backup}')
+    return backup
+
+
+def reload_private_config(config: Path) -> None:
+    query = ['ausearch', '--input-logs', '-m', 'DAEMON_CONFIG', '--raw']
+    before = subprocess.run(query, text=True, capture_output=True)
+    baseline = set(re.findall(r'msg=audit\(([^)]+)\)', before.stdout))
+    started = int(time.time() * 1000) / 1000
+    subprocess.run(['auditctl', '--signal', 'reload'], check=True)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            query,
+            text=True,
+            capture_output=True,
+        )
+        acknowledged = False
+        for line in result.stdout.splitlines():
+            match = re.search(r'msg=audit\(((\d+(?:\.\d+)?):\d+)\)', line)
+            if (
+                match
+                and match.group(1) not in baseline
+                and float(match.group(2)) >= started
+                and 'type=DAEMON_CONFIG ' in line
+                and 'op=reconfigure ' in line
+                and re.search(r'\bres=success\b', line)
+            ):
+                acknowledged = True
+                break
+        if acknowledged:
+            # Reconfigure may reopen/chown the log; validate only after its success event.
+            check_privacy(config)
+            return
+        time.sleep(0.2)
+    raise RuntimeError(
+        'No successful auditd reconfigure event within 10s; verify private logs before collecting'
+    )
 
 
 def check_journal_privacy() -> None:
@@ -186,7 +374,7 @@ def self_test() -> None:
             run(['auditctl', *rule(fixture, key, '-d')])
 
 
-def activate(install_tools: bool) -> None:
+def activate(install_tools: bool, private_logs: bool = False) -> None:
     if os.geteuid() != 0:
         raise RuntimeError('Root required: administrator must run the reviewed activation command')
     if not all(shutil.which(name) for name in ('auditctl', 'ausearch')):
@@ -207,6 +395,8 @@ def activate(install_tools: bool) -> None:
         raise RuntimeError(f'Conflicting persistent file: {RULE_FILE}; refusing to overwrite')
     check_journal_privacy()
     subprocess.run(['systemctl', 'enable', '--now', 'auditd.service'], check=True)
+    if private_logs:
+        privatize_logs()
     check_privacy()
     status = run(['auditctl', '-s'])
     if re.search(r'^enabled\s+2\s*$', status, re.MULTILINE):
@@ -250,15 +440,24 @@ def main() -> int:
         action='store_true',
         help='Allow apt-get install auditd if tools are absent',
     )
+    parser.add_argument(
+        '--private-logs',
+        action='store_true',
+        help='Explicitly migrate standard auditd log_group/permissions to root-only, with backup',
+    )
     args = parser.parse_args()
     if not args.activate:
         print('Plan only; no changes: install auditd if requested; enable standard auditd service;')
+        if args.private_logs:
+            print(
+                'OPT-IN: back up auditd.conf; set only log_group=root and root-only log permissions; reload auditd'
+            )
         print('require root-private disk logs; verify isolated synthetic writer attribution;')
         print(f'add exactly: {shlex.join(rule(WATCH, KEY))}')
         print(f'persist in {RULE_FILE}; preserve all other rules/configuration')
         return 0
     try:
-        activate(args.install_tools)
+        activate(args.install_tools, args.private_logs)
     except (RuntimeError, OSError, subprocess.SubprocessError) as error:
         # Do not expose captured command output: audit records can contain credentials.
         print(f'Activation failed: {error}', file=sys.stderr)

@@ -1,6 +1,6 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v4 — 2026-10-20
+> 문서 버전 v5 — 2026-10-20
 
 ## 무엇을 했나
 
@@ -385,3 +385,27 @@ clone, Opus verdict, `git -C <literal path> push origin main`; then `fetch` + `c
 - Backup and rollback procedure: ADR 0005. Production volume restoration was not
   performed. Existing worktrees and unrelated local files were preserved; spark-infra
   writes belong to the separate integration chat.
+
+
+## 도구·훅 이상 (별도 진행)
+
+### 2026-10-20 23:52 KST — Codex push workdir 전달 제약 (1회, 완화)
+
+- 런타임/도구: Codex, `functions.exec` -> `tools.exec_command` / PreToolUse merge review hook.
+- 정확한 입력: `{"cmd":"git push origin main","workdir":"/home/jl/coding/graphiti-src","yield_time_ms":1000,"max_output_tokens":2000}`.
+- 거부 원문:
+
+  ```text
+  Command blocked by PreToolUse hook: 머지 검토 게이트(Opus/Sol)[push -> main]: Codex hook은 exec_command의 실제 workdir를 전달하지 않아 session cwd의 승인을 사용할 수 없다. 직접 'git -C /절대/저장소 ...'로 대상을 명시할 것.
+
+  이 Bash 호출의 명령은 하나도 실행되지 않았다 — 거부는 호출 전체에 걸린다. 앞부분이 돌았다고 가정하지 말 것.. Command: git push origin main
+  ```
+
+- 실측한 대체 수단: `git -C /home/jl/coding/graphiti-src push --dry-run origin main`
+  (동일 workdir, yield_time_ms=1000, max_output_tokens=2000) exit 0. 검토/CI 훅은 유지됐고
+  91e508be에 대한 internal-ci 실행 `47239e209ef84794a0fe8d54f64b2d32`가 수행됐다.
+  `--dry-run`이므로 원격 반영 증거가 아니다. 실제 push도 절대경로 `git -C` 형식을 쓴다.
+- 가설: [추정] PreToolUse가 현재 도구의 workdir 필드를 저장소 탐지에 반영하지 못한다.
+  훅 원인 조사·수정은 이 작업에서 하지 않는다. 상태: 완화, 별도 작업에서 재현/조사 필요.
+- 이 문서만 바뀌므로 설치 wheel/설정/스냅샷/시험 입력에 의존한 88 tests와 live 검증은
+  재사용한다. 새 SHA의 독립 검토와 exact-SHA CI는 다시 수행한다.

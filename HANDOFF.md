@@ -338,8 +338,9 @@ clone, Opus verdict, `git -C <literal path> push origin main`; then `fetch` + `c
 
 ## 2026-10-20 update — delete_episode fixed, upstream merge planned (ADR 0005)
 
-- `delete_episode` raised `TypeError` in production since 2026-09-28: 41bb660 patched only the in-tree `graphiti_core`
-  and the tool passed `group_id=` to the PyPI 0.30.2 `remove_episode(episode_uuid)`. Fixed in `aa4cccd` with upstream's
+- `delete_episode` raised `TypeError` in production since 2026-09-28: 41bb660 changed both the in-tree `graphiti_core`
+  (`remove_episode` gained `group_id`) and the MCP tool (passes `group_id=`), but production runs the PyPI 0.30.2
+  `remove_episode(episode_uuid)`, which has no `group_id`. Fixed in `aa4cccd` with upstream's
   `_driver_for_group` / `_client_for_group`; Opus gate APPROVE, internal-ci passed, pushed, `graphiti-mcp` restarted
   21:58 KST.
 - Production check: `add_memory` into throwaway group `delete-verify-20261020` (processed in 9 s), `delete_episode` with

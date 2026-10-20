@@ -7,7 +7,7 @@ been run yet except the measurements quoted below.
 
 ## Context (measured 2026-10-20)
 
-- The unattended update night of 2026-10-20 02:00 blocked two candidates: the fork merge (local `8f3169a` onto upstream
+- The unattended update night of 2026-10-20 02:00 blocked two candidates: the fork merge (local tip at that time `8f3169a` onto upstream
   `5961293`) and graphiti-core 0.30.2 -> 0.31.1 in `mcp_server/uv.lock`. Evidence:
   `~/coding/session-work/20261019-spark-update-night-20261020/` (`core-execution/CORE-RESULT-v1.md`,
   `db-review/graphiti-merge-tree.txt`).
@@ -16,7 +16,8 @@ been run yet except the measurements quoted below.
 - `delete_episode` raised `TypeError` from 2026-09-28 (41bb660) to 2026-10-20: the tool passed `group_id=` to the PyPI
   `remove_episode(episode_uuid)`. Fixed in `aa4cccd` with upstream's `_client_for_group` pattern, deployed and checked on a
   throwaway group (3 nodes + 3 edges -> 0, graph then dropped).
-- upstream/main is now `3cc723c`, 55 commits past the merge base `c035afb79`; the fork has 31 local commits.
+- At `aa4cccd` (measured 2026-10-20 evening), upstream/main is `3cc723c`, 55 commits past the merge base `c035afb79`;
+  the fork has 31 local commits.
   `git merge-tree --write-tree HEAD upstream/main` reports 5 conflicting files (the night run against `5961293` saw 2):
 
 | File | Fork side | Upstream side | Resolution |
@@ -35,7 +36,7 @@ been run yet except the measurements quoted below.
   has: `get_episodes`, `clear_graph` and `summarize_saga` read or write the default graph through `client.driver`, so for a
   non-default group they miss the group's graph (`get_episodes` returned nothing for a stored episode on 2026-10-20).
 - **Localhost-only defaults** (#2032) overlap the fork's ADR 0002 loopback binding.
-- **Default model changes** (#1999: gpt-4.1-nano defaults replaced). The fork's reranker patch (`factories.py`,
+- **Default model changes** (#1999: gpt-4.1-nano defaults replaced). The fork's reranker patch (`mcp_server/src/services/factories.py`,
   `model=config.model`) auto-merges, but the result must be read: the reranker must still use the configured local model.
 - **Core, unreleased**: #2025 (`c38d7c1`, in no release tag on 2026-10-20) changes `remove_episode` to keep edges that other
   episodes restate. The installed 0.30.2 deletes every edge whose *first* episode is the removed one, even if later episodes
@@ -43,15 +44,15 @@ been run yet except the measurements quoted below.
 
 ## Fork protections to keep through the merge
 
-1. `extra_body` injection and Qwen thinking off + `json_schema` structured output (ADR 0004; `config/schema.py`,
-   `services/factories.py`, `config-local-kure.yaml`).
-2. Reranker uses the configured LLM model (ADR 0001 §3).
-3. Loopback-only binding and FalkorDB auth/AOF (ADR 0002; `docker/run-falkordb.sh`, compose file).
-4. Secrets read at start from `~/.config/graphiti/falkordb.env` and `~/.config/qwen38/api-key` (`run-mcp.sh`), none in the repo.
+1. `extra_body` injection and Qwen thinking off + `json_schema` structured output (ADR 0004; `mcp_server/src/config/schema.py`,
+   `mcp_server/src/services/factories.py`, `mcp_server/config/config-local-kure.yaml`).
+2. Reranker uses the configured LLM model (ADR 0001 §3; `mcp_server/src/services/factories.py`).
+3. Loopback-only binding and FalkorDB auth/AOF (ADR 0002; `mcp_server/docker/run-falkordb.sh`, `mcp_server/docker/docker-compose-falkordb.yml`).
+4. Secrets read at start from `~/.config/graphiti/falkordb.env` and `~/.config/qwen38/api-key` (`mcp_server/run-mcp.sh`), none in the repo.
 5. `coerce_group_ids` (scalar `group_ids` accepted) and the group_id safety net from a7b4847.
-6. Queue logging changes in `services/queue_service.py`.
-7. The stdio idle watchdog (`utils/idle_watchdog.py`). It wraps the private `mcp._tool_manager.call_tool`
-   (`graphiti_mcp_server.py` around line 1326). Whether `MCPServer` in SDK 2.x still has `_tool_manager` is not checked.
+6. Queue logging changes in `mcp_server/src/services/queue_service.py`.
+7. The stdio idle watchdog (`mcp_server/src/utils/idle_watchdog.py`). It wraps the private `mcp._tool_manager.call_tool`
+   (`mcp_server/src/graphiti_mcp_server.py` lines 1321-1327 at `aa4cccd`). Whether `MCPServer` in SDK 2.x still has `_tool_manager` is not checked.
    It only runs on stdio; production is HTTP, Claude Code's `graphiti-legal` is HTTP, and `graphiti-session-sync-v2` is HTTP.
    The only stdio user, `graphiti-session-sync.service` (v1), is disabled. Options: port it to a public 2.x hook, or drop it
    and record that stdio has no idle timeout. Decide at merge time from what 2.x exposes.

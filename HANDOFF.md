@@ -1,6 +1,31 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v5 — 2026-10-20
+> 문서 버전 v6 — 2026-10-21
+
+## 2026-10-21 종료·설치 변경 진단 수집
+
+- 과거 23:51 설치 디렉터리 변경의 실행 주체와 23:54 종료 지연 원인은 기존 기록만으로
+  확정하지 못했다. 불완전한 POST는 격리 재현에서 종료 대기를 만들었으나 과거 사건의
+  원인으로 귀속하지 않는다. 조사 근거는 `session-work/20261021-runtime-investigation/`.
+- HTTP 서버의 `server.diagnostics_dir`가 설정되면 시작·종료 신호·종료 진입·대기 2초 간격·
+  종료 완료 때 요청 진행 상태와 asyncio await 위치를 JSONL로 기록한다. 본문·인증 헤더·
+  쿼리·지역변수·작업 이름은 제외한다. 종료 제한시간과 SDK 기본 동작은 유지한다.
+- 로컬 설정 출력은 `session-work/runtime-observability/asgi/runtime.jsonl`이다.
+  디렉터리 0700, 파일 0600, 파일당 1 MiB와 보관본 2개로 제한하며 기록 실패는 고정 경고를
+  남긴다. 설정은 다음 서버 시작부터 적용되며 현재 실행 중인 Python에 소급 적용되지 않는다.
+- 실행 감사 활성화·합성 파일 검증 절차는 `mcp_server/observability/EXECUTION-AUDIT.md`.
+  커널 감사에는 root가 필요하다. 현재 세션은 `sudo -n true`가
+  `sudo: a password is required`로 실패하여 실커널 감사 활성화·귀속 검증은 미완료다.
+  기존 규칙을 지우거나 다른 권한 경로로 우회하지 않는다. 원본 감사 기록에는 명령 인자가
+  있을 수 있으므로 root 전용으로 유지하고 일반 보고에 원문을 복사하지 않는다.
+- 수집 검증은 DB/LLM 초기화를 대체한 격리 HTTP 서버와 합성 파일을 사용한다.
+  실자료 graph에 시험 쓰기를 하지 않으며 spark-infra 파일은 수정하지 않는다.
+- 새 검증: 진단·그룹 라우팅·삭제·core parity 58 tests PASS(5.52초), 감사 설정의
+  비관리자 검사 10 tests PASS, internal-ci와 같은 Ruff 0.14.11 검사·포맷 PASS.
+  HTTP 실프로세스 3건에는 idle, 초기화된 SSE, 불완전한 POST 종료 대기를 포함한다.
+  선택 검증에 관련 없는 Gemini factory 시험을 추가한 최초 실행은 운영 환경에 없는
+  선택 의존성 `google-genai` 때문에 collection 실패했다. 해당 환경을 변경하거나 이
+  실패를 통과로 간주하지 않았으며, 최종 58건은 명시한 파일 범위의 결과다.
 
 ## 무엇을 했나
 

@@ -1,6 +1,7 @@
 # 로컬 스택 설정: LLM=로컬 vLLM(8012, Qwen3.8-27B-NVFP4), embedder=KURE-v1(로컬 8002, graphiti-eval), DB=FalkorDB(로컬, 볼륨 영속)
 server:
   transport: "stdio"
+  diagnostics_dir: "/home/jl/coding/graphiti-src/session-work/runtime-observability/asgi"
   # The stdio idle timeout (idle_timeout_seconds) was removed with the MCP SDK 2.x merge
   # (ADR 0005): production runs over HTTP (graphiti-mcp.service), not stdio.
 

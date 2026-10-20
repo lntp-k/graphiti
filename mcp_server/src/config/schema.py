@@ -82,6 +82,9 @@ class ServerConfig(BaseModel):
     )
     host: str = Field(default='127.0.0.1', description='Server host')
     port: int = Field(default=8000, description='Server port')
+    diagnostics_dir: str | None = Field(
+        default=None, description='Private directory for bounded HTTP shutdown diagnostics'
+    )
 
 
 class OpenAIProviderConfig(BaseModel):

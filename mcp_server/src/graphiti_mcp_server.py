@@ -46,6 +46,7 @@ from services.factories import (
     LLMClientFactory,
 )
 from services.queue_service import QueueService
+from services.runtime_diagnostics import run_with_diagnostics
 from utils.formatting import format_fact_result, to_edge_result, to_node_result
 from utils.type_config import (
     build_edge_type_map,
@@ -1366,7 +1367,12 @@ async def run_mcp_server():
         # Configure uvicorn logging to match our format
         configure_uvicorn_logging()
 
-        await mcp.run_streamable_http_async(host=mcp_config.host, port=mcp_config.port)
+        if mcp_config.diagnostics_dir:
+            await run_with_diagnostics(
+                mcp, mcp_config.host, mcp_config.port, mcp_config.diagnostics_dir
+            )
+        else:
+            await mcp.run_streamable_http_async(host=mcp_config.host, port=mcp_config.port)
     else:
         raise ValueError(
             f'Unsupported transport: {mcp_config.transport}. Use "sse", "stdio", or "http"'

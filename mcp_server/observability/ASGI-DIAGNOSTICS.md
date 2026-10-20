@@ -1,4 +1,4 @@
-> Document version v1 — 2026-10-21
+> Document version v2 — 2026-10-21
 
 # HTTP shutdown diagnostics
 
@@ -23,16 +23,25 @@ values, task names, source lines or frame locals are captured. Only the numeric
 Content-Length is retained from headers. A write failure disables capture and
 prints `ASGI diagnostics disabled: private log write failed` once to stderr.
 
-The wrapper preserves SDK HTTP defaults, SSE signal delegation and Uvicorn's
-existing unlimited graceful wait. It observes a shutdown stall; it does not fix
-one or force cancellation. A SIGKILL cannot produce a final snapshot. Code
-blocking the asyncio event loop can also prevent periodic sampling.
+The shared HTTP runner preserves SDK HTTP defaults, SSE signal delegation and
+Uvicorn's existing unlimited graceful wait. Before Uvicorn waits for connections,
+it closes modern notification subscriptions and rejects late subscription
+admission. Other tool requests keep their existing completion behavior. This
+drain runs even when diagnostic capture is disabled. With capture enabled,
+`subscriptions_draining` marks the close operation. A SIGKILL cannot produce a
+final snapshot; a blocked asyncio loop can also prevent periodic sampling.
+
+The adapter uses the SDK's public session manager and handler registry and keeps
+the original subscription parameter model. An unexpected registered listener type
+fails at startup rather than silently losing shutdown cleanup. Test compatibility
+before changing the installed MCP version. Graceful timeout remains unchanged;
+the collector can still observe other sources of shutdown stalls.
 
 Validate without DB/LLM initialization or production connections:
 
 ```sh
 cd /home/jl/coding/graphiti-src/mcp_server
-GRAPHITI_TELEMETRY_ENABLED=false .venv/bin/python -m pytest tests/test_runtime_diagnostics.py tests/test_runtime_diagnostics_process.py --basetemp=../session-work/asgi-diagnostics-test
+GRAPHITI_TELEMETRY_ENABLED=false .venv/bin/python -m pytest tests/test_runtime_diagnostics.py tests/test_runtime_diagnostics_process.py tests/test_subscription_shutdown.py tests/test_subscription_shutdown_process.py --basetemp=../session-work/asgi-diagnostics-test
 ```
 
 After normal service activation, verify a `startup` record belongs to the current

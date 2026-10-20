@@ -11,6 +11,8 @@ from pathlib import Path
 
 import uvicorn
 
+from services.subscription_shutdown import SubscriptionDrainingServer, install_subscription_drain
+
 
 class PrivateRotatingWriter:
     """Best-effort JSONL output; a failed writer never prevents server operation."""
@@ -166,9 +168,16 @@ class RuntimeDiagnostics:
         return observed
 
 
-class ObservedServer(uvicorn.Server):
-    def __init__(self, config, diagnostics: RuntimeDiagnostics, snapshot_interval: float = 2.0):
-        super().__init__(config)
+class ObservedServer(SubscriptionDrainingServer):
+    def __init__(
+        self,
+        config,
+        diagnostics: RuntimeDiagnostics,
+        snapshot_interval: float = 2.0,
+        *,
+        drain_subscriptions=None,
+    ):
+        super().__init__(config, drain_subscriptions=drain_subscriptions)
         self.diagnostics = diagnostics
         self.snapshot_interval = snapshot_interval
 
@@ -202,9 +211,27 @@ class ObservedServer(uvicorn.Server):
             self.diagnostics.snapshot('shutdown_exit')
 
 
-async def run_with_diagnostics(mcp, host: str, port: int, output_dir: str) -> None:
-    """Use SDK defaults; only wrap request bookkeeping and uvicorn diagnostics."""
-    diagnostics = RuntimeDiagnostics(PrivateRotatingWriter(output_dir))
-    app = diagnostics.wrap(mcp.streamable_http_app(host=host))
+async def run_http_server(mcp, host: str, port: int, output_dir: str | None = None) -> None:
+    """Preserve SDK defaults while draining subscriptions, with optional capture."""
+    app = mcp.streamable_http_app(host=host)
+    close_subscriptions = install_subscription_drain(mcp)
+    diagnostics = RuntimeDiagnostics(PrivateRotatingWriter(output_dir)) if output_dir else None
+    if diagnostics is not None:
+        app = diagnostics.wrap(app)
     config = uvicorn.Config(app, host=host, port=port, log_level=mcp.settings.log_level.lower())
-    await ObservedServer(config, diagnostics).serve()
+    if diagnostics is None:
+        server = SubscriptionDrainingServer(config, drain_subscriptions=close_subscriptions)
+    else:
+
+        def drain_and_record():
+            if close_subscriptions is not None:
+                close_subscriptions()
+                diagnostics.snapshot('subscriptions_draining')
+
+        server = ObservedServer(config, diagnostics, drain_subscriptions=drain_and_record)
+    await server.serve()
+
+
+async def run_with_diagnostics(mcp, host: str, port: int, output_dir: str) -> None:
+    """Compatibility entry point for callers that explicitly enable capture."""
+    await run_http_server(mcp, host, port, output_dir)

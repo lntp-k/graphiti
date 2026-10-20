@@ -1,6 +1,29 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v8 — 2026-10-21
+> 문서 버전 v9 — 2026-10-21
+
+## 2026-10-21 현대 MCP 구독의 종료 정리
+
+- 실행 감사 설정은 JL의 최종 실행에서 합성 writer1850901의 커널 귀속과 운영 규칙
+  영속화가 모두 PASS했다. 아래 수집 절의 중간 실패·미완료 표시는 당시 경과다.
+- 계측 후01:01:01~01:02:32 운영 재현에서 현대 `subscriptions/listen`20개가
+  본문544/544 수신 후에도 응답을 끝내지 않았고,44개 대기 표본에서 유지됐다.
+  SDK2.2의 raw ASGI SSE 구독은 SIGTERM drain 없이 Uvicorn의 무제한 연결 대기를
+  남겨 systemd90초 SIGKILL에 도달했다. 계측 없는 과거 사건까지 소급 확정하지 않는다.
+- `services/subscription_shutdown.py`는 SDK의 공개 session_manager/handler 등록 API로
+  기존 ListenHandler를 감싼다. 종료 때 기존 구독을 닫고 새 구독 진입을 막은 다음
+  Uvicorn의 기존 연결 종료를 진행한다. 도구 요청 처리와 종료 제한시간은 유지한다.
+  지원하지 않는 구독 핸들러 형태는 시작 전에 명확히 실패한다.
+- 공통 HTTP 진입점에 적용해 diagnostics_dir 설정 여부와 관계없이 정리한다.
+  진단이 켜져 있으면 `subscriptions_draining` 표본을 추가한다. stdio/SSE 경로와
+  실자료 graph, spark-infra 파일은 수정하지 않는다.
+- 회귀:1/20개 현대 구독 × 진단 켬/끔4조건은 수정 전 모두5초 종료 제한 초과,
+  수정 후 모두 약0.214초 종료였다. 클라이언트 소켓을 프로세스 종료 때까지 유지했고,
+  모든 구독의 최종 result/subscriptionId와 EOF를 확인했다. 격리 서버는 Graphiti DB
+  초기화를 금지한다. 관련83 tests PASS(8.74초), Ruff 검사·포맷 PASS.
+- 검토 후 운영 적용과 동일 조건의 실측 결과는
+  `session-work/20261021-subscription-shutdown-fix/`에 보존한다. 이전 조사 원본은
+  `session-work/20261021-instrumented-shutdown/SHUTDOWN-CAUSE-v2.md`.
 
 ## 2026-10-21 종료·설치 변경 진단 수집
 

@@ -22,15 +22,11 @@ async def test_server_dispatch_uses_configured_capture(monkeypatch, enabled):
     monkeypatch.setattr(server, 'initialize_server', AsyncMock(return_value=config))
     capture = AsyncMock()
     normal = AsyncMock()
-    monkeypatch.setattr(server, 'run_with_diagnostics', capture)
+    monkeypatch.setattr(server, 'run_http_server', capture)
     monkeypatch.setattr(server.mcp, 'run_streamable_http_async', normal)
     await server.run_mcp_server()
-    if enabled:
-        capture.assert_awaited_once_with(server.mcp, config.host, config.port, '/private')
-        normal.assert_not_awaited()
-    else:
-        normal.assert_awaited_once_with(host=config.host, port=config.port)
-        capture.assert_not_awaited()
+    capture.assert_awaited_once_with(server.mcp, config.host, config.port, config.diagnostics_dir)
+    normal.assert_not_awaited()
 
 
 class Records:
@@ -205,10 +201,11 @@ async def test_signal_delegation_and_periodic_shutdown(monkeypatch):
 async def test_sdk_defaults_and_graceful_timeout_unchanged(monkeypatch):
     mcp = SimpleNamespace(settings=SimpleNamespace(log_level='INFO'))
     mcp.streamable_http_app = lambda **kwargs: kwargs
+    mcp.session_manager = SimpleNamespace(app=SimpleNamespace(get_request_handler=lambda _: None))
     captured = {}
 
     class Server:
-        def __init__(self, config, diagnostics):
+        def __init__(self, config, diagnostics, **kwargs):
             captured['config'] = config
             captured['diagnostics'] = diagnostics
 

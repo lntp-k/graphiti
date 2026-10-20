@@ -1,6 +1,6 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v7 — 2026-10-21
+> 문서 버전 v8 — 2026-10-21
 
 ## 2026-10-21 종료·설치 변경 진단 수집
 
@@ -25,6 +25,13 @@
   추가 15개 비관리자 검사는 이관·백업·재실행·새 reload 확인 이벤트를 검증했다.
   동일 밀리초 응답과 중단된 이관 후 재실행도 검사했다. ASGI 파일·설정·패키지는
   바뀌지 않아 이전 58건의 결과를 재사용하며, 새 SHA의 검토·CI는 다시 수행한다.
+  JL의 두 번째 실행에서 root 전용 이관과 합성 커널 귀속(PID1740830)이 성공했다.
+  백업은 `/home/jl/coding/session-work/graphiti-execution-audit/privacy-backup-l732xcum`.
+  이후 검증 실패는 실제 충돌이 아니라 auditctl 3.1.2가 DIR/PERM/KEY 규칙을
+  `-w /home/jl/coding/graphiti-src/mcp_server -p wa -k graphiti_venv`로 출력하는 데 대한
+  비교기 오류였다. JL의 읽기 전용 조회로 운영 규칙 등록은 확인됐고, 영속화는 미완료다.
+  실제 출력의 실패→통과 회귀와 기존 감시의 중복 추가 없는 영속화 검사를 추가해
+  17개 감사 검사 PASS. 추가 필터·다른 경로/권한·중복 규칙의 거부는 유지한다.
 - 수집 검증은 DB/LLM 초기화를 대체한 격리 HTTP 서버와 합성 파일을 사용한다.
   실자료 graph에 시험 쓰기를 하지 않으며 spark-infra 파일은 수정하지 않는다.
 - 새 검증: 진단·그룹 라우팅·삭제·core parity 58 tests PASS(5.52초), 감사 설정의

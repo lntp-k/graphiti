@@ -33,6 +33,20 @@ def rule(directory: Path, key: str, action: str = '-a') -> list[str]:
 
 def canonical(value: str) -> tuple[str, ...]:
     tokens = shlex.split(value)
+    # auditctl 3.1.2 renders an all-syscall DIR/PERM/KEY rule as a legacy watch.
+    # Accept only its exact three fields; additional filters remain conflicting.
+    if len(tokens) == 6 and set(tokens[::2]) == {'-w', '-p', '-k'}:
+        watch = dict(zip(tokens[::2], tokens[1::2], strict=True))
+        tokens = [
+            '-a',
+            'always,exit',
+            '-F',
+            f'dir={watch["-w"]}',
+            '-F',
+            f'perm={watch["-p"]}',
+            '-k',
+            watch['-k'],
+        ]
     if '-S' in tokens:
         index = tokens.index('-S')
         if tokens[index + 1 : index + 2] == ['all']:
@@ -51,9 +65,9 @@ def check_rules(existing: str, desired: list[str], key: str) -> bool:
         if re.search(rf'(?:key=|-k\s+){re.escape(key)}(?:\s|$)', line)
     ]
     if any(canonical(line) != canonical(shlex.join(desired)) for line in matches):
-        raise RuntimeError(f'Conflicting existing audit rule for key {key}; no rules changed')
+        raise RuntimeError(f'Conflicting audit rule for key {key}; refusing to continue')
     if len(matches) > 1:
-        raise RuntimeError(f'Duplicate audit rules for key {key}; no rules changed')
+        raise RuntimeError(f'Duplicate audit rules for key {key}; refusing to continue')
     return bool(matches)
 
 

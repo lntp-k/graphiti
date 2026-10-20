@@ -18,6 +18,52 @@ SPEC.loader.exec_module(audit)
 
 
 class AuditSetupTests(unittest.TestCase):
+    def test_actual_kernel_watch_listing_matches_without_weakening_scope(self):
+        args = audit.rule(audit.WATCH, audit.KEY)
+        actual = '-w /home/jl/coding/graphiti-src/mcp_server -p wa -k graphiti_venv'
+        self.assertTrue(audit.check_rules(actual, args, audit.KEY))
+        for changed in (
+            actual.replace('-p wa', '-p r'),
+            actual.replace('/mcp_server ', '/other '),
+            actual + ' -F uid=0',
+        ):
+            with self.subTest(changed=changed), self.assertRaisesRegex(RuntimeError, 'Conflicting'):
+                audit.check_rules(changed, args, audit.KEY)
+        with self.assertRaisesRegex(RuntimeError, 'Duplicate'):
+            audit.check_rules(actual + '\n' + actual, args, audit.KEY)
+
+    def test_existing_live_watch_is_persisted_without_duplicate_add(self):
+        parent = Path('/home/jl/coding/graphiti-src/session-work/20261021-audit-tests')
+        parent.mkdir(parents=True, exist_ok=True)
+        actual = '-w /home/jl/coding/graphiti-src/mcp_server -p wa -k graphiti_venv'
+
+        def observed_command(args):
+            if args == ['auditctl', '-l']:
+                return actual
+            if args == ['auditctl', '-s']:
+                return 'enabled 1\nlost 0\n'
+            self.fail(f'Unexpected kernel mutation: {args}')
+
+        with tempfile.TemporaryDirectory(dir=parent) as folder:
+            persistent = Path(folder) / '70-graphiti-venv.rules'
+            with (
+                mock.patch.object(audit.os, 'geteuid', return_value=0),
+                mock.patch.object(audit, 'RULE_FILE', persistent),
+                mock.patch.object(audit.shutil, 'which', return_value='/synthetic/tool'),
+                mock.patch.object(audit, 'run', side_effect=observed_command),
+                mock.patch.object(audit.subprocess, 'run'),
+                mock.patch.object(audit, 'check_journal_privacy'),
+                mock.patch.object(audit, 'check_privacy'),
+                mock.patch.object(audit, 'check_losses'),
+                mock.patch.object(audit, 'self_test') as synthetic,
+            ):
+                audit.activate(False)
+            synthetic.assert_called_once_with()
+            self.assertEqual(
+                audit.canonical(persistent.read_text()),
+                audit.canonical(actual),
+            )
+
     def test_watch_parent_survives_venv_replacement(self):
         self.assertEqual(audit.WATCH.name, 'mcp_server')
         args = audit.rule(audit.WATCH, audit.KEY)

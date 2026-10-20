@@ -1,4 +1,4 @@
-> Document version v2 — 2026-10-21
+> Document version v3 — 2026-10-21
 
 # Linux installation-write audit
 
@@ -42,6 +42,15 @@ verified until this command prints both PASS messages. Existing global rules suc
 as `never,task` may prevent the test; the helper fails rather than removing them.
 A package install/service enable can remain in effect after a later check fails;
 the helper reports failure and does not claim rollback.
+
+Auditctl 3.1.2 can list this same DIR/PERM/KEY syscall rule as
+`-w /home/jl/coding/graphiti-src/mcp_server -p wa -k graphiti_venv`.
+The comparison accepts this exact alias, preserving path, permissions and key;
+additional filters or duplicate rules still fail. An already active matching
+watch is not added again; activation verifies it and completes persistence.
+Failure after a rule-add can leave that live rule in place before persistence.
+Inspect current rules before drawing conclusions from a failure message.
+This formatting follows the official [auditctl listing implementation](https://raw.githubusercontent.com/linux-audit/audit-userspace/v3.1.2/src/auditctl-listing.c).
 
 Persistence uses the distribution's normal audit rules startup loader. Confirm the
 rule after the next planned host reboot; this helper does not reboot or reload all

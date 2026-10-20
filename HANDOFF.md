@@ -1,6 +1,6 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v2 — 2026-10-20
+> 문서 버전 v3 — 2026-10-20
 
 ## 무엇을 했나
 
@@ -358,3 +358,12 @@ clone, Opus verdict, `git -C <literal path> push origin main`; then `fetch` + `c
 - ADR 0005 순서(포크 병합 먼저, graphiti-core 는 0.30.2 유지 후 별도 갱신)로 업스트림 병합을 실행할지.
 - 병합 시 stdio idle watchdog 처리: MCP SDK 2.x 공개 훅으로 옮길지, 운영이 전부 HTTP 이므로 제거할지
   (stdio 사용자는 비활성 v1 session-sync 하나뿐).
+
+## 2026-10-20 update (later) — upstream merged, idle watchdog removed (ADR 0005 executed)
+
+- JL approved ADR 0005 and the watchdog removal. Upstream `3cc723c` merged into the fork: MCP SDK 2.2.0, group routing
+  for every tool, graphiti-core still 0.30.2. Details, checks and evidence: ADR 0005 "Execution".
+- `get_episodes`, `clear_graph`, `summarize_saga` now work on non-default groups (live sweep 18/18).
+- The stdio idle timeout no longer exists; production is HTTP only (`graphiti-mcp.service`).
+- Pre-merge FalkorDB copy: `/home/jl/Documents/graphiti-falkordb-snapshots/20261020-pre-merge/`.
+- Still open: graphiti-core update (ADR 0005 step 3 checklist), preferably to the first release with #2025.

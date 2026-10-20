@@ -1,9 +1,9 @@
 # ADR 0005: merge upstream into the fork first, update graphiti-core later
 
-> Document version v1 — 2026-10-20
+> Document version v2 — 2026-10-20
 
-Status: proposed (2026-10-20). Waiting for JL's go-ahead before the merge itself is executed. Nothing in this ADR has
-been run yet except the measurements quoted below.
+Status: accepted (JL, 2026-10-20: "ADR 0005 순서대로 병합 진행해, watchdog는 제거"). Steps 1-2 executed on
+2026-10-20; see "Execution". Step 3 (graphiti-core update) is still open.
 
 ## Context (measured 2026-10-20)
 
@@ -87,3 +87,33 @@ been run yet except the measurements quoted below.
 - Until the merge, the fork's `get_episodes`, `clear_graph` and `summarize_saga` remain wrong for non-default FalkorDB
   groups. Until a core with #2025 ships, `delete_episode` on real data can remove facts that later episodes restated.
 - This ADR is a plan. Executing the merge needs JL's approval.
+
+## Execution (2026-10-20)
+
+- Intake gate: Opus reviewed upstream `3cc723c` (55 commits) before `git merge` (PyPI-only lock sources with sha256, no
+  telemetry/exec, `--destroy-graph` still opt-in, Jev/Decisions clients opt-in).
+- Conflicts resolved by taking upstream for all 5 files, then re-applying fork code:
+  - `graphiti_core/graphiti.py` and `tests/test_request_scope_concurrency.py`: upstream (41bb660's core change dropped).
+  - `mcp_server/src/graphiti_mcp_server.py`: upstream (SDK 2.x, group routing for every tool, incl. `delete_episode`),
+    plus the fork's `add_memory` warning for a missing / `_unassigned` group_id.
+  - `mcp_server/tests/test_live_falkordb_int.py`: upstream, plus the fork's "episode absent after delete" assertion.
+  - `mcp_server/docker/docker-compose-falkordb.yml`: upstream (all ports on 127.0.0.1).
+  - `mcp_server/uv.lock`: regenerated; mcp 2.2.0, graphiti-core pinned to 0.30.2 (`>=0.30.2,<0.31` in
+    `mcp_server/pyproject.toml`). The 0.31.1 floor could be relaxed: upstream's server imports nothing 0.31-only that the
+    unit tests or the live sweep below reached.
+- Idle watchdog removed (JL): `mcp_server/src/utils/idle_watchdog.py`, its three test files, `idle_timeout_seconds` in
+  `mcp_server/src/config/schema.py` and `mcp_server/config/config-local-kure.yaml`, the queue hook in
+  `mcp_server/src/services/queue_service.py` (now identical to upstream).
+- Kept and checked by diff: `extra_body` injection and the reranker model patch (`mcp_server/src/services/factories.py`),
+  `run-mcp.sh`, `docker/run-falkordb.sh`, `config-local-kure.yaml`.
+- Unit tests (`mcp_server/tests`, excluding the live file): 94 passed; the same 15 failures and 3 collection errors occur on
+  pure upstream `3cc723c` (environment-dependent integration tests, missing optional extras), so none comes from the merge.
+  `ruff check` and `ruff format --check` pass.
+- FalkorDB snapshot before any live call: `BGSAVE` then a copy of `/var/lib/falkordb/data` (rdb + AOF) to
+  `/home/jl/Documents/graphiti-falkordb-snapshots/20261020-pre-merge/` (sha256 list next to it). Outside git: case data.
+- Live sweep: merged server on 127.0.0.1:8766 against the production FalkorDB, driven by an mcp 1.30 client (the version
+  `graphiti-session-sync-v2` uses). Real groups read-only (`get_episodes`, `search_nodes`, `search_memory_facts`); writes only
+  to throwaway group `merge-sweep-20261020` (ADR 0004 contradiction pair, saga, `get_episode_entities`, `summarize_saga`,
+  `delete_episode`, `clear_graph`). 18/18 passed; the old fact got `invalid_at` 2026-06-01; both episodes processed in
+  40 s. Node/edge/episode counts of `infra-memory`, `infra-wiki`, `coding-wiki` were identical before and after. The empty
+  throwaway graph was dropped with `GRAPH.DELETE`.

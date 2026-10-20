@@ -17,9 +17,8 @@ is reachable:
 - CI: ``OPENAI_API_KEY`` comes from the GitHub environment and FalkorDB runs as a
   container (see .github/workflows/mcp-server-tests.yml).
 
-The model is taken from ``MODEL_NAME`` (CI pins a lighter, broadly-available model
-for speed/reliability; gpt-5.5 is the server's runtime default but needs a
-key with fast gpt-5.5 access), falling back to the server's configured default.
+The model is taken from ``MODEL_NAME``. CI sets ``gpt-6-luna`` for the live run.
+The server uses its configured default when ``MODEL_NAME`` is unset.
 """
 
 import asyncio
@@ -248,11 +247,11 @@ async def test_end_to_end_add_search_delete_clear():
             status = await client.call('get_status', {})
             assert isinstance(status, dict) and status.get('status') == 'ok', f'status: {status}'
 
-            # 6. Delete the episode from its named FalkorDB graph, then verify
-            # it is absent before clearing the test group.
+            # 6. Delete the episode, then clear the test group.
             deleted = await client.call('delete_episode', {'uuid': episode_uuid, 'group_id': group})
             assert isinstance(deleted, dict) and 'message' in deleted, f'delete_episode: {deleted}'
 
+            # Fork: verify the episode is gone from its named FalkorDB graph.
             remaining = await client.call(
                 'get_episodes', {'group_ids': [group], 'max_episodes': 10}
             )

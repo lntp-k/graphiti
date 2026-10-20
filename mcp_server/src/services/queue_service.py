@@ -1,16 +1,10 @@
 """Queue service for managing episode processing."""
 
-from __future__ import annotations
-
 import asyncio
-import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from utils.idle_watchdog import IdleTimeoutWatchdog
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +20,6 @@ class QueueService:
         self._queue_workers: dict[str, bool] = {}
         # Store the graphiti client after initialization
         self._graphiti_client: Any = None
-        # Optional: set via set_idle_watchdog() so background episode
-        # processing counts as MCP activity too (see idle_watchdog.py) --
-        # add_episode_task() returns as soon as it's queued, but the real
-        # work happens later in _process_episode_queue().
-        self._idle_watchdog: IdleTimeoutWatchdog | None = None
-
-    def set_idle_watchdog(self, watchdog: IdleTimeoutWatchdog | None) -> None:
-        """Mark background episode processing as activity for `watchdog`."""
-        self._idle_watchdog = watchdog
 
     async def add_episode_task(
         self, group_id: str, process_func: Callable[[], Awaitable[None]]
@@ -76,15 +61,9 @@ class QueueService:
                 # This will wait if the queue is empty
                 process_func = await self._episode_queues[group_id].get()
 
-                activity = (
-                    self._idle_watchdog.track_activity()
-                    if self._idle_watchdog is not None
-                    else contextlib.nullcontext()
-                )
                 try:
                     # Process the episode
-                    with activity:
-                        await process_func()
+                    await process_func()
                 except Exception as e:
                     logger.error(
                         f'Error processing queued episode for group_id {group_id}: {str(e)}'

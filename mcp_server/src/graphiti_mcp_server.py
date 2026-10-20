@@ -6,6 +6,7 @@ Graphiti MCP Server - Exposes Graphiti functionality through the Model Context P
 import argparse
 import asyncio
 import contextlib
+import copy
 import logging
 import os
 import sys
@@ -16,6 +17,7 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 from graphiti_core import Graphiti
+from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EntityNode, EpisodeType, SagaNode
 from graphiti_core.search.search_filters import SearchFilters
@@ -183,6 +185,42 @@ mcp = FastMCP(
 # Global services
 graphiti_service: Optional['GraphitiService'] = None
 queue_service: QueueService | None = None
+
+
+_group_drivers: dict[tuple[int, str], GraphDriver] = {}
+
+
+def _driver_for_group(client: Graphiti, group_id: str) -> GraphDriver:
+    """Return a driver bound to the graph that stores the given group.
+
+    FalkorDB stores each non-default group_id in its own graph; on backends
+    where clone() is a no-op this returns the base driver unchanged. Clones are
+    cached per base driver and group so the backend builds indices once per group.
+    """
+    key = (id(client.driver), group_id)
+    driver = _group_drivers.get(key)
+    if driver is None:
+        driver = client.driver.clone(database=group_id)
+        _group_drivers[key] = driver
+    return driver
+
+
+def _client_for_group(client: Graphiti, group_id: str) -> Graphiti:
+    """Return a Graphiti client whose driver is bound to the group's graph.
+
+    Taken from upstream getzep/graphiti so that core methods using self.driver
+    (remove_episode) see the group-scoped driver. The PyPI graphiti-core this
+    server runs on keeps remove_episode(episode_uuid) without a group_id.
+    """
+    driver = _driver_for_group(client, group_id)
+    if driver is client.driver:
+        return client
+    scoped = copy.copy(client)
+    scoped.driver = driver
+    scoped.clients = client.clients.model_copy(update={'driver': driver})
+    return scoped
+
+
 idle_watchdog: IdleTimeoutWatchdog | None = None
 
 # Global client for backward compatibility
@@ -718,9 +756,13 @@ async def delete_episode(
     try:
         client = await graphiti_service.get_client()
 
+        effective_group_id = group_id or config.graphiti.group_id
+        scoped_client = (
+            _client_for_group(client, effective_group_id) if effective_group_id else client
+        )
         # remove_episode cascades cleanup of episode-created entities/edges,
         # unlike EpisodicNode.delete which would orphan them.
-        await client.remove_episode(uuid, group_id=group_id)
+        await scoped_client.remove_episode(uuid)
         return SuccessResponse(message=f'Episode with UUID {uuid} deleted successfully')
     except Exception as e:
         error_msg = str(e)

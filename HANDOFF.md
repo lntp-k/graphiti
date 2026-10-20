@@ -1,6 +1,6 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v1 — 2026-10-20
+> 문서 버전 v2 — 2026-10-20
 
 ## 무엇을 했나
 
@@ -335,3 +335,25 @@ clone, Opus verdict, `git -C <literal path> push origin main`; then `fetch` + `c
   published by its follow-up session `f79a3514`.
 - Not done: `~/.config/systemd/user/graphiti-session-sync.service` (the retired v1 unit, static,
   timer disabled) still sets `HERMES_HOME`; it does not run.
+
+## 2026-10-20 update — delete_episode fixed, upstream merge planned (ADR 0005)
+
+- `delete_episode` raised `TypeError` in production since 2026-09-28: 41bb660 patched only the in-tree `graphiti_core`
+  and the tool passed `group_id=` to the PyPI 0.30.2 `remove_episode(episode_uuid)`. Fixed in `aa4cccd` with upstream's
+  `_driver_for_group` / `_client_for_group`; Opus gate APPROVE, internal-ci passed, pushed, `graphiti-mcp` restarted
+  21:58 KST.
+- Production check: `add_memory` into throwaway group `delete-verify-20261020` (processed in 9 s), `delete_episode` with
+  the uuid read from FalkorDB -> success; graph went from 3 nodes + 3 edges to 0; `GRAPH.DELETE` dropped the empty graph.
+  Scripts and logs: `session-work/20261020-delete-episode/` (local only, excluded from git).
+- Still wrong for non-default groups (fixed upstream by #1926, comes with the merge): `get_episodes` (returned nothing for
+  the stored episode above), `clear_graph`, `summarize_saga` use the default graph.
+- Caution: installed core 0.30.2 `remove_episode` deletes facts whose first episode is the removed one even when later
+  episodes restated them. Upstream fix #2025 is in no release yet.
+- Merge plan, conflicts (5 files against upstream `3cc723c`), protections to keep, and the checks a later graphiti-core
+  update needs: `decisions/0005-upstream-merge-plan-fork-first-core-later.md`.
+
+### JL 결정 필요
+
+- ADR 0005 순서(포크 병합 먼저, graphiti-core 는 0.30.2 유지 후 별도 갱신)로 업스트림 병합을 실행할지.
+- 병합 시 stdio idle watchdog 처리: MCP SDK 2.x 공개 훅으로 옮길지, 운영이 전부 HTTP 이므로 제거할지
+  (stdio 사용자는 비활성 v1 session-sync 하나뿐).

@@ -1,6 +1,77 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v9 — 2026-10-21
+> 문서 버전 v10 — 2026-10-21
+
+## 2026-10-21 최종 운영 결과와 wrap-up 인계
+
+이 절이 아래 조사·적용 경과보다 우선하는 현재 상태다. 종료 때 현대 MCP 구독을
+먼저 정리하는 수정은 독립 검토 후 운영에 적용했고, 같은 Claude 원격 CLI 20개
+PID 집합·동일 SDK/유닛 조건에서 지연이 사라졌다. 적용 전 재시작 90.237초/SIGKILL,
+수정 적용 후 재시작 0.241초, 종료 진입→완료 0.105222초이며 강제 종료는 없었다.
+진단에서 구독 20→0, shutdown_wait 0회를 확인했다. 운영 Python 2114011과
+UV 2114002는 2026-10-21 01:26:56 KST에 기동했고, wrap-up 때도 active/running이다.
+당시 최종 metadata tools/list HTTP 200/13개 결과는 final-health.json에 보존한다.
+문서만 추가하는 마무리 때문에 서비스를 다시 시작하지 않는다.
+
+### 발행 범위·원본·보존
+
+- 프로젝트: fork `git@github.com:lntp-k/graphiti.git`, main→origin/main.
+  fetch로 확인한 기준은 `39e2626004cb4e8418cd3ef878f63dd446d59efa`.
+- 이번 세션에서 이미 발행한 커밋: `91e508be`(core 0.31.1), `39e26260`(훅 제약 인계).
+  미발행 범위는 이번 세션의 `2fb388a8`, `1d7b6eca`, `6483cbf2`, `3cc50489`와
+  이 인계 문서 커밋이다. 전부 같은 세션의 실행 기록으로 생성 귀속을 확인했다.
+  타 세션에서 인수한 커밋은 없다. 마지막 문서 커밋까지 전체 범위를 독립 검토하고
+  보호 push에서 정확 SHA CI를 수행한다. 완료 SHA·결과는 아래 로컬 closeout에 남긴다.
+- 기존 미추적 `.claude/`, `.token-optimizer/`, 로그·가상환경·session-work는 제외한다.
+  작업 브랜치 merge-upstream-20261020와 detached upstream-3cc723c 워크트리는
+  운영 checkout이 아니므로 보존하며 이동·삭제·reset하지 않는다. 다른 프로젝트의
+  커밋이나 읽기 전용으로 조회한 broad-container 저장소는 발행 범위가 아니다.
+- 소스 정본은 Git 추적 코드·설정·관측 절차다. 운영 결과 정본은
+  `session-work/20261021-subscription-shutdown-fix/SHUTDOWN-FIX-v1.md`,
+  `activation/`, `verification/`, `same-conditions.json`, `final-health.json`이다.
+  원인 조사 정본은 `session-work/20261021-instrumented-shutdown/SHUTDOWN-CAUSE-v2.md`.
+  수집 설정 경과는 `session-work/20261021-runtime-investigation/OBSERVABILITY-v2.md`.
+- 마무리 신규 검사·명령 시각/종료/소요·발행 SHA·인덱스 결과는
+  `session-work/20261021-wrap-up/`에 보관한다. closeout 문서는 새 버전 파일로 작성한다.
+  이 결과들은 특정 실행의 관측 기록이므로 같은 출력의 재생성 명령은 N/A다.
+  의미 있는 재측정은 SHUTDOWN-FIX-v1.md에 명시한 격리 pytest 명령으로 수행한다.
+  산출 파일의 sha256은 wrap-up evidence-observation.json에 관찰 해시로 기록하며,
+  생성 해시나 재실행 성공의 대체물로 사용하지 않는다.
+- 원본 사전 RDB는 Documents의 별도 로컬 스냅샷 폴더에 읽기 전용으로 보존한다.
+  경로·관찰 해시·메타데이터 보관 사본은 그 폴더 HANDOFF와 manifest가 정본이다.
+  원본 RDB는 복사·재생성·수정하지 않는다. 실자료 graph·spark-infra 파일 수정도 없다.
+
+### 확인·미확인·결정
+
+- 실행 감사: JL의 최종 관리자 실행에서 writer PID 1850901의 PID/PPID/exe/PATH/
+  PROCTITLE 귀속과 운영 감시 active/persistent가 PASS했다. auditd root 전용 로그 정책은
+  유지한다. wrap-up의 비관리자 세션은 /var/log/audit, /etc/audit/rules.d 및 root 소유
+  감사 설정 백업 내부를 읽지 못한다. 이를 재검증했다고 주장하지 않는다.
+- wrap-up collect는 exit 2로 위 root 경계와 읽기 전용 메모리 저장소의 origin 부재를
+  NOT EXAMINED로 보고했다. 쓰기 경로·커밋·워크트리는 대화 실행 기록과 실제 Git 상태로
+  별도 대조했다. 읽을 수 없는 root 내부 목록은 미해결 범위로 남긴다. 도구를 고치거나
+  권한을 우회하지 않는다. 메모리 저장소는 읽기 전용이며 이번 발행 대상이 아니다.
+- 계측 전 23:51 설치 디렉터리 변경 실행자와 과거 비계측 종료 사건은 여전히 귀속 불가다.
+  다음 재현 때 root 감사 기록과 ASGI 시각을 대조해야 한다. 재부팅 후 커널 규칙 재적용은
+  실제 재부팅으로 시험하지 않았다. core #2025 미포함에 따른 과거 삭제 의미 한계도 남는다.
+- 이번 수정의 83개 DB 없는 회귀는 wrap-up에서 새로 실행해 PASS했다(9.46초).
+  Ruff 0.14.11 check/format과 diff --check도 새로 PASS했다. 전체 DB/LLM 통합 시험은 보존 범위 때문에 실행하지 않는다. 실자료 시험 쓰기 없음.
+- 2026-10-21 결정: SDK 공개 등록 API로 구독을 닫고 신규 진입을 차단한 뒤 Uvicorn이
+  연결을 기다리게 한다. 이유: 원인인 raw ASGI 구독을 정상 완료시키기 위해서다.
+- 다음 조치: 별도 재현 발생 시 관리자만 원시 감사 기록을 열어 실행 귀속을 조사한다.
+  재부팅 검증은 다음 승인된 유지보수 때 한다. 새 사용자 결정·법정 기한·제출 검사: N/A.
+  기존 퇴역 기능·다른 저장소·과거 TODO를 이번 마무리 작업으로 확대하지 않는다.
+
+| 단위 | 입력·의존 대상 | 상태·근거 | 재사용/재실행 이유 |
+| --- | --- | --- | --- |
+| 범위·보존 | 세션 실행 기록, fetch 기준, 원본 스냅샷 | 새 확인·wrap-up 기록 | mtime만으로 귀속하지 않음 |
+| 회귀·검토·발행 | 기존 수정 코드와 새 인계 커밋 | 새 검사와 전체 outgoing 검토·정확 SHA CI | 최종 커밋에 맞춰 검증 |
+| 운영 결과 | 실제 같은 20개 클라이언트의 전후 실행 | 기존 관측 원본 보존, 서비스 상태 새 조회 | 문서 변경으로 운영 재시작을 반복하지 않음 |
+| 인덱스 | 발행 SHA, 깨끗한 main, 호스트 등록 목록 | 발행 검증 뒤 해당 목록대로 수행 | 다른 경로·실자료 graph는 인덱싱하지 않음 |
+
+이번 마무리는 부모가 인계와 보존을 순차 작성한다(공유 문서·snapshot 의존).
+독립 최신 Sol 검토자 1개를 별도로 호출하며 토큰은 도구가 제공하지 않아 추정하지 않는다.
+독립 조회는 묶어서 실행한다. 병행 방식의 속도 개선은 비교 입력이 없어 주장하지 않는다.
 
 ## 2026-10-21 현대 MCP 구독의 종료 정리
 

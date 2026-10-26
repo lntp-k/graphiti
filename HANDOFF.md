@@ -1,6 +1,54 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v10 — 2026-10-21
+> 문서 버전 v11 — 2026-10-26
+
+## 2026-10-26 core 0.31.2와 upstream 릴리스 갱신
+
+JL의 “모두 업데이트” 지시에 따라 v0.31.2를 정상 merge하고 MCP 설치 의존성을
+0.31.1→0.31.2로 올린다. 이 절이 아래 #2025 미포함 한계보다 우선한다.
+Incoming d72407d의 두 커밋은 독립 최신 Sol이 정상 merge 범위로 APPROVE했고 정식 기록했다.
+Fork 전용 코드·local factories·MCP 2.2 제약을 보존했다. certifi는 upstream 보안 하한을
+만족하는 2026.10.23으로 갱신하며, 나머지 설치 의존성 버전은 유지한다.
+결과 SHA의 독립 검토·정확 SHA internal-ci·push 뒤 운영의 locked sync/restart를 수행한다.
+이 문서 작성 시점에는 운영 환경을 바꾸지 않았으며 최종 SHA/활성화 결과는 아래 로컬 산출물에 남긴다.
+
+- 새 RDB snapshot: `/home/jl/Documents/graphiti-falkordb-snapshots/20261026-pre-core-0312/`.
+  6,818,314 bytes, SHA256 `033e971a42c0ac49ef838c60b12130e7552f9981581c282af38a78c20b9d88eb`.
+  BGSAVE 완료 뒤 복사·해시 검증했으며, 현재 운영 이미지 ID로 loopback DB에 복원했다.
+  복제본의 다섯 그룹 인덱스 구축과 node/edge 수 보존, 실제 읽기 UUID-set 해시 9개 일치를 확인했다.
+- 설치 wheel의 MCP 단위 88개, ruff 0.14.11 검사·서식, temporal 19/19,
+  기존 MCP 1.30 v2 consumer CRUD/검색/삭제를 새로 검증했다.
+  정상 merge 후 종료/진단 회귀 23개도 새 환경에서 통과했다(9.08초).
+- Restated-fact 회귀는 두 삭제 순서에서 남은 provenance와 vector 보존/마지막 provenance 삭제를 통과했다.
+  현재 0.31.1 wheel은 같은 복제 DB fixture에서 예상대로 EdgeNotFoundError로 실패했다.
+  실자료 episode를 삭제해서 검증하지 않았다. 후보 서버와 복제 DB는 종료·정리했다.
+- 비민감 검증 산출물 정본: `/home/jl/coding/session-work/20261026-spark-updates/graphiti/READY-v1.md`,
+  `validation-manifest.json`, `wheel-runtime-manifest.json`, `post-merge-reuse-verification.json`.
+  민감 본문을 포함할 수 있는 서버 로그는 Documents의 snapshot 폴더에만 보존한다.
+- Rollback: 새 ingestion을 비운 뒤 이전 SHA 9549aacf의 dependency manifest/lock을 정상 게이트로
+  복구하고 locked sync/restart한다. 데이터는 그대로 유지한다. RDB 복원은 이후 쓰기를 잃을 수 있어
+  별도 복구 결정이 필요하며 유일 원본을 덮지 않는다. 기존 퇴역 sync timer는 다시 켜지 않는다.
+
+| 단위 | 입력·의존 대상 | 상태·근거 | 재사용/재실행 이유 |
+| --- | --- | --- | --- |
+| Incoming merge | 9549aacf + v0.31.2 두 커밋 | 새 독립 Sol APPROVE, 정상 merge | fork 전용 코드 보존 |
+| 후보 기능·복원 | 새 snapshot, PyPI wheel, unchanged local config | 새 단위88/temporal19/실제읽기9/consumer/회귀 통과 | 기존 판 결과로 대체하지 않음 |
+| Merge 후 검사 | 여섯 파일·테스트·설정 SHA256 | 테스트된 후보와 모두 동일 | 동일 입력·환경 검증 후 후보 결과 재사용 |
+| 발행·활성화 | 최종 SHA·독립 Sol·internal-ci | 최종 결과는 로컬 closeout에서 확인 | incoming 승인으로 결과 SHA 게이트 생략 안 함 |
+
+읽는 조사와 격리 후보 검증을 다른 도구 업데이트와 병행했다. merge/공유 파일 변경/검토/발행/활성화는
+의존 관계와 승인 게이트 때문에 순차다. 동일 조건의 순차 대조 실행이 없어 속도 향상은 주장하지 않는다.
+
+### 도구·훅 이상 (별도 진행)
+
+- 2026-10-26 · Codex · 입력 `uv sync --locked --project /home/jl/coding/session-work/20261026-spark-updates/graphiti/candidate/mcp_server --extra dev`.
+  응답: error: Extra `dev` is not defined in the `optional-dependencies` table for `mcp-server` (exit 2).
+  실측 대체: `--extra dev` 없는 locked sync가 기본 dev dependency group을 설치. 상태: 완화(호출 옵션 오류).
+- 2026-10-26 · Codex · 입력 `GRAPHITI_TELEMETRY_ENABLED=false /home/jl/coding/session-work/20261026-spark-updates/graphiti/candidate/mcp_server/.venv/bin/python /home/jl/coding/session-work/20261026-spark-updates/graphiti/compare_reads.py > /home/jl/coding/session-work/20261026-spark-updates/graphiti/read-comparison.log 2>&1`
+  및 `GRAPHITI_TELEMETRY_ENABLED=false /home/jl/coding/session-work/20261026-spark-updates/graphiti/candidate/mcp_server/.venv/bin/python /home/jl/coding/session-work/20261026-spark-updates/graphiti/contradiction_sweep_v2.py update-temporal-20261026 > /home/jl/coding/session-work/20261026-spark-updates/graphiti/temporal.log 2>&1`.
+  두 응답: ImportError: cannot import name 'streamablehttp_client' from 'mcp.client.streamable_http' (/home/jl/coding/session-work/20261026-spark-updates/graphiti/candidate/mcp_server/.venv/lib/python3.10/site-packages/mcp/client/streamable_http.py) (exit 1).
+  실측 대체: 기존 MCP1.30 consumer의 `/home/jl/coding/graphiti-session-sync/.venv/bin/python`으로 같은 scripts 재실행하여 v2 로그 성공.
+  상태: 완화(검증용 consumer interpreter 선택 오류). 실패 로그는 성공 근거로 재사용하지 않음.
 
 ## 2026-10-21 최종 운영 결과와 wrap-up 인계
 

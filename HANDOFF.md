@@ -1,16 +1,19 @@
 # HANDOFF — graphiti-src (2026-09-15 재구성)
 
-> 문서 버전 v11 — 2026-10-26
+> 문서 버전 v12 — 2026-10-26
 
 ## 2026-10-26 core 0.31.2와 upstream 릴리스 갱신
 
 JL의 “모두 업데이트” 지시에 따라 v0.31.2를 정상 merge하고 MCP 설치 의존성을
-0.31.1→0.31.2로 올린다. 이 절이 아래 #2025 미포함 한계보다 우선한다.
+0.31.1→0.31.2로 올렸다. 이 절이 아래 #2025 미포함 한계보다 우선한다.
 Incoming d72407d의 두 커밋은 독립 최신 Sol이 정상 merge 범위로 APPROVE했고 정식 기록했다.
 Fork 전용 코드·local factories·MCP 2.2 제약을 보존했다. certifi는 upstream 보안 하한을
-만족하는 2026.10.23으로 갱신하며, 나머지 설치 의존성 버전은 유지한다.
-결과 SHA의 독립 검토·정확 SHA internal-ci·push 뒤 운영의 locked sync/restart를 수행한다.
-이 문서 작성 시점에는 운영 환경을 바꾸지 않았으며 최종 SHA/활성화 결과는 아래 로컬 산출물에 남긴다.
+만족하는 2026.10.23으로 갱신했고, 나머지 설치 의존성 버전은 유지했다.
+결과 `d49cb691eea075057a3939228df29484a70514f9`의 독립 Sol APPROVE·정식 기록·
+정확 SHA internal-ci·보호 push를 통과한 뒤 운영의 locked sync/restart를 완료했다.
+2026-10-26 마무리 읽기 확인에서 로컬/원격 main이 이 SHA와 일치했고, 운영 venv의
+graphiti-core는0.31.2, `graphiti-mcp.service`는active/running(PID726969)이었다.
+운영 시작 시각은12:58:29KST다. 문서 보완을 위해 서비스를 다시 시작하지 않았다.
 
 - 새 RDB snapshot: `/home/jl/Documents/graphiti-falkordb-snapshots/20261026-pre-core-0312/`.
   6,818,314 bytes, SHA256 `033e971a42c0ac49ef838c60b12130e7552f9981581c282af38a78c20b9d88eb`.
@@ -34,10 +37,42 @@ Fork 전용 코드·local factories·MCP 2.2 제약을 보존했다. certifi는 
 | Incoming merge | 9549aacf + v0.31.2 두 커밋 | 새 독립 Sol APPROVE, 정상 merge | fork 전용 코드 보존 |
 | 후보 기능·복원 | 새 snapshot, PyPI wheel, unchanged local config | 새 단위88/temporal19/실제읽기9/consumer/회귀 통과 | 기존 판 결과로 대체하지 않음 |
 | Merge 후 검사 | 여섯 파일·테스트·설정 SHA256 | 테스트된 후보와 모두 동일 | 동일 입력·환경 검증 후 후보 결과 재사용 |
-| 발행·활성화 | 최종 SHA·독립 Sol·internal-ci | 최종 결과는 로컬 closeout에서 확인 | incoming 승인으로 결과 SHA 게이트 생략 안 함 |
+| 발행·활성화 | d49cb691·독립 Sol·internal-ci | 보호 push·locked sync/restart·실제 consumer 검증 완료 | incoming 승인으로 결과 SHA 게이트 생략 안 함 |
 
 읽는 조사와 격리 후보 검증을 다른 도구 업데이트와 병행했다. merge/공유 파일 변경/검토/발행/활성화는
 의존 관계와 승인 게이트 때문에 순차다. 동일 조건의 순차 대조 실행이 없어 속도 향상은 주장하지 않는다.
+
+### 발행 범위와 마무리 인계
+
+- 이번 세션의 코드 발행은 `9549aacf784643b9e59b5d4d5b2794be71fcf11f`에서
+  `d49cb691eea075057a3939228df29484a70514f9`로의 정상 merge다. 두 번째 부모는
+  upstream `d72407dcedac911e1be9fc15b55e8c05a3efcc36`이며 incoming 두 커밋과
+  결과 SHA를 각각 검토했다. 원격 main의 포함을 확인했고 merge와 push 모두 완료했다.
+  이전 세션 커밋을 이번 마무리에서 별도 편입하지 않았다. 남은 로컬
+  `merge-upstream-20261020` 브랜치는 이미 main의 조상이며 삭제하지 않았다.
+- 기존 검증 근거: exact-SHA CI run `3c275172b04b425e92643ecff62d4081`,
+  운영 종료0.216초, HTTP health200·tools/list13·읽기/합성 CRUD/빈 시험그룹 정리 통과.
+  `/home/jl/coding/session-work/20261026-spark-updates/UPDATE-RESULT-v1.md`가
+  배포 완료 기록이다. `graphiti/READY-v1.md`는 배포 전 검증 단계의 기록으로 구분한다.
+  이 문서 보완에서는 기능 시험을 재실행하지 않았으며 새 문서 SHA의 검토/CI는 별도다.
+- 읽기 전용 원본은 Git의 fork/release와 보존한 wheel/RDB snapshot이다. 코드·lock이 정본이고
+  로컬 JSON/로그는 검증 파생물이다. 이번 작업의 파생물 재생성은N/A(문서만 편집).
+  기존 검증 명령은 `graphiti/READY-v1.md`에 보존한다. 관측값 재확인 명령은
+  `sha256sum /home/jl/coding/session-work/20261026-spark-updates/graphiti/{validation-manifest,wheel-runtime-manifest,post-merge-reuse-verification,internal-ci-report}.json`
+  이다. 아래 값은 generation hash가 아닌 기존 파일의 observation hash다.
+
+  | 파일 | SHA256 관측 |
+  |---|---|
+  | validation-manifest.json | `4c0cd7b7cf93014729b7f58432ea1744c52ab5427130fc2f2a9b7b4d42f6ce6e` |
+  | wheel-runtime-manifest.json | `e80e22bc3ed88f8098e098b6d0348d8a91b3440683dbfe0f9856ee21b780eb35` |
+  | post-merge-reuse-verification.json | `007948127714545a60fca288db542739c5c009f47bd517e986c35dc7c031f038` |
+  | internal-ci-report.json | `7f696bb8b757cc5ea6d0d0c9b841b555aa8d19ba0dba0121c7cd217b1ec346da` |
+
+- 기한·법원 제출 검사·변환 전문 parity·Mode B snapshot 목록: N/A. 이 저장소는 코드 저장소다.
+  결정(2026-10-26): 검증된 소스/운영 상태를 보존하고 문서만 보완한다. DB 복원이나
+  보존 자료 삭제는 하지 않는다. 남은 일은 이 문서 변경의 정식 검토/게시와 아래 도구 이상 별도 처리다.
+  사용자에게 필요한 새 배포 결정은 없다. 다른 호스트의 복사본·물리 장치 상태는 미검증이다.
+  운영 main의 미추적 `.claude/`·`.token-optimizer/`는 보존한다. 이 문서 편집은 별도 후보에서 했다.
 
 ### 도구·훅 이상 (별도 진행)
 

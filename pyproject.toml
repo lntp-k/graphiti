@@ -9,7 +9,7 @@ authors = [
 ]
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10,<4"
+requires-python = ">=3.11,<4"
 dependencies = [
     "pydantic>=2.11.5",
     "neo4j>=5.26.0",
@@ -73,6 +73,8 @@ pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
+# Keep lint rules at the upstream (3.10) level after requires-python moved to 3.11 in this fork.
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
@@ -102,5 +104,5 @@ docstring-code-format = true
 
 [tool.pyright]
 include = ["graphiti_core", ".github/intake"]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 typeCheckingMode = "basic"

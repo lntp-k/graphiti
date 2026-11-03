@@ -3,7 +3,7 @@ name = "mcp-server"
 version = "1.1.2"
 description = "Graphiti MCP Server"
 readme = "README.md"
-requires-python = ">=3.10,<4"
+requires-python = ">=3.11,<4"
 dependencies = [
     "mcp>=2,<3",
     "openai>=2.41.0",
@@ -27,11 +27,13 @@ providers = [
 
 [tool.pyright]
 include = ["src", "tests"]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 typeCheckingMode = "basic"
 
 [tool.ruff]
 line-length = 100
+# Keep lint rules at the upstream (3.10) level after requires-python moved to 3.11 in this fork.
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
